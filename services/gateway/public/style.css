@@ -1155,3 +1155,88 @@ th {
     gap: 6px;
   }
 }
+
+.footer {
+  margin-top: 40px;
+  padding: 32px 40px;
+  background: #2b1d14;
+  color: #fff;
+}
+
+.footer-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.footer-brand {
+  width: 30%;
+}
+
+.footer-brand h3 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  color: #f3c27a;
+}
+
+.footer-brand p {
+  margin: 6px 0;
+  color: #e6d7c8;
+}
+
+.footer-team {
+  margin-top: 16px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.footer-branches {
+  flex: 1;
+}
+
+.footer-branches h4 {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: #f3c27a;
+}
+
+.branch-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px 24px;
+}
+
+.branch-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.branch-item strong {
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.branch-item span {
+  color: #e6d7c8;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .footer-container {
+    flex-direction: column;
+  }
+
+  .footer-brand {
+    width: 100%;
+  }
+
+  .branch-list {
+    grid-template-columns: 1fr;
+  }
+}
