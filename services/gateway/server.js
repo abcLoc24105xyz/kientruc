@@ -683,6 +683,8 @@ app.use((err, req, res, next) => {
   );
 });
 
-app.listen(process.env.GATEWAY_PORT || 3000, () => {
-  console.log('gateway running http://localhost:3000');
+const PORT = process.env.PORT || process.env.GATEWAY_PORT || 3000;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`gateway running on port ${PORT}`);
 });

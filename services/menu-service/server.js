@@ -663,6 +663,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(process.env.MENU_PORT || 4003, () => {
-  console.log('menu-service running');
+const PORT = process.env.PORT || process.env.MENU_PORT || 4003;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`menu-service running on port ${PORT}`);
 });

@@ -642,6 +642,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(process.env.AUTH_PORT || 4001, () => {
-  console.log('auth-service running');
+const PORT = process.env.PORT || process.env.AUTH_PORT || 4001;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`auth-service running on port ${PORT}`);
 });

@@ -18,7 +18,9 @@ app.use(morgan('dev'));
 let redis;
 
 createRedisClient()
-  .then(c => redis = c)
+  .then(c => {
+    redis = c;
+  })
   .catch(() => {});
 
 const VALID_PERIODS = ['day', 'week', 'month'];
@@ -437,6 +439,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(process.env.REPORT_PORT || 4006, () => {
-  console.log('report-service running');
+const PORT = process.env.PORT || process.env.REPORT_PORT || 4006;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`report-service running on port ${PORT}`);
 });

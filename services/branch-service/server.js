@@ -305,6 +305,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(process.env.BRANCH_PORT || 4002, () => {
-  console.log('branch-service running');
+const PORT = process.env.PORT || process.env.BRANCH_PORT || 4002;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`branch-service running on port ${PORT}`);
 });

@@ -777,6 +777,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(process.env.LOYALTY_PORT || 4005, () => {
-  console.log('loyalty-service running');
+const PORT = process.env.PORT || process.env.LOYALTY_PORT || 4005;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`loyalty-service running on port ${PORT}`);
 });
