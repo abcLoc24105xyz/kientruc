@@ -215,6 +215,10 @@
     }
 
     try {
+      if (!CURRENT_USER.role) {
+        throw new Error('Không xác định được quyền người dùng hiện tại.');
+      }
+
       const res = await fetch(`${ORDER_SERVICE_URL}/orders/${orderId}/cancel-pending`, {
         method: 'PATCH',
         headers: {
