@@ -12,19 +12,7 @@ const {
 
 const app = express();
 
-app.use(cors({
-  origin: true,
-  credentials: true,
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'X-User-Id',
-    'X-User-Role',
-    'X-User-Branch-Id'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-}));
-
+app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
@@ -38,7 +26,6 @@ createRedisClient()
 
 const POINT_VALUE = Number(process.env.POINT_VALUE || 500);
 const POINT_EARN_PER = Number(process.env.POINT_EARN_PER || 10000);
-const PENDING_CANCEL_AFTER_MINUTES = Number(process.env.PENDING_CANCEL_AFTER_MINUTES || 30);
 
 const VALID_ORDER_STATUS = ['PENDING', 'PAID', 'CANCELLED'];
 
@@ -87,23 +74,6 @@ function sendValidationError(res, errors) {
     message: 'Dữ liệu không hợp lệ',
     errors
   });
-}
-
-/**
- * Dùng riêng cho route hủy đơn khi frontend gọi thẳng order-service.
- * Frontend gửi role/branchId từ session EJS qua header:
- * X-User-Role, X-User-Branch-Id, X-User-Id
- */
-function getFrontendActor(req) {
-  const role = cleanString(req.headers['x-user-role']).toLowerCase();
-  const branchId = toPositiveInteger(req.headers['x-user-branch-id']);
-  const userId = toPositiveInteger(req.headers['x-user-id']);
-
-  return {
-    role,
-    branchId,
-    userId
-  };
 }
 
 function validateOrderQuery(query) {
@@ -285,6 +255,8 @@ app.get('/health', (req, res) => {
 
 /* =========================
    POS CUSTOMER LIST
+   Màn bán hàng lấy toàn bộ khách hàng từ bảng customers.
+   Không lấy từ orders, vì orders chỉ có khách đã từng mua.
 ========================= */
 
 app.get('/pos/customers', authRequired, asyncHandler(async (req, res) => {
@@ -385,9 +357,6 @@ app.get('/orders', authRequired, asyncHandler(async (req, res) => {
     where += ` AND to_char(o.created_at, 'YYYY-MM') = $${params.length}`;
   }
 
-  params.push(PENDING_CANCEL_AFTER_MINUTES);
-  const timeoutParamIndex = params.length;
-
   const { rows } = await pool.query(
     `
     SELECT 
@@ -395,13 +364,7 @@ app.get('/orders', authRequired, asyncHandler(async (req, res) => {
       b.name AS branch_name,
       c.name AS customer_name,
       c.phone AS customer_phone,
-      c.email AS customer_email,
-      CASE
-        WHEN o.status = 'PENDING'
-         AND NOW() >= o.created_at + ($${timeoutParamIndex} || ' minutes')::interval
-        THEN TRUE
-        ELSE FALSE
-      END AS can_cancel_timeout
+      c.email AS customer_email
     FROM orders o
     JOIN branches b ON b.id = o.branch_id
     LEFT JOIN customers c ON c.id = o.customer_id
@@ -435,19 +398,13 @@ app.get('/orders/:id', authRequired, asyncHandler(async (req, res) => {
         b.address AS branch_address,
         c.name AS customer_name,
         c.phone AS customer_phone,
-        c.email AS customer_email,
-        CASE
-          WHEN o.status = 'PENDING'
-           AND NOW() >= o.created_at + ($2 || ' minutes')::interval
-          THEN TRUE
-          ELSE FALSE
-        END AS can_cancel_timeout
+        c.email AS customer_email
       FROM orders o
       JOIN branches b ON b.id = o.branch_id
       LEFT JOIN customers c ON c.id = o.customer_id
       WHERE o.id = $1
       `,
-      [orderId, PENDING_CANCEL_AFTER_MINUTES]
+      [orderId]
     )
   ).rows[0];
 
@@ -769,189 +726,6 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
     res.status(201).json({
       ...order.rows[0],
       earned_points_if_paid: earnPoints(finalAmount)
-    });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
-  }
-}));
-
-/* =========================
-   CANCEL PENDING ORDER TIMEOUT
-   Frontend gọi thẳng order-service, không cần token:
-   PATCH http://localhost:4004/orders/:id/cancel-pending
-========================= */
-
-app.patch('/orders/:id/cancel-pending', asyncHandler(async (req, res) => {
-  const orderId = toPositiveInteger(req.params.id);
-
-  if (!orderId) {
-    return sendValidationError(res, ['Mã đơn hàng không hợp lệ']);
-  }
-
-  const actor = getFrontendActor(req);
-
-  if (!['admin', 'manager'].includes(actor.role)) {
-    return res.status(403).json({
-      message: 'Chỉ admin hoặc manager được hủy đơn PENDING quá hạn'
-    });
-  }
-
-  if (actor.role === 'manager' && !actor.branchId) {
-    return res.status(403).json({
-      message: 'Không xác định được chi nhánh của manager'
-    });
-  }
-
-  const client = await pool.connect();
-
-  try {
-    await client.query('BEGIN');
-
-    const order = (
-      await client.query(
-        `
-        SELECT *
-        FROM orders
-        WHERE id = $1
-        FOR UPDATE
-        `,
-        [orderId]
-      )
-    ).rows[0];
-
-    if (!order) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        message: 'Không tìm thấy đơn'
-      });
-    }
-
-    if (
-      actor.role === 'manager' &&
-      Number(order.branch_id) !== Number(actor.branchId)
-    ) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({
-        message: 'Manager chỉ được hủy đơn thuộc chi nhánh của mình'
-      });
-    }
-
-    if (order.status !== 'PENDING') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({
-        message: 'Chỉ được hủy đơn đang ở trạng thái PENDING'
-      });
-    }
-
-    const timeoutResult = await client.query(
-      `
-      SELECT
-        NOW() >= $1::timestamp + ($2 || ' minutes')::interval AS can_cancel,
-        EXTRACT(EPOCH FROM (NOW() - $1::timestamp)) / 60 AS pending_minutes
-      `,
-      [order.created_at, PENDING_CANCEL_AFTER_MINUTES]
-    );
-
-    const canCancel = timeoutResult.rows[0].can_cancel;
-    const pendingMinutes = Math.floor(Number(timeoutResult.rows[0].pending_minutes || 0));
-
-    if (!canCancel) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({
-        message: `Đơn hàng mới PENDING khoảng ${pendingMinutes} phút, chưa quá ${PENDING_CANCEL_AFTER_MINUTES} phút nên chưa được hủy`
-      });
-    }
-
-    const paidPayment = (
-      await client.query(
-        `
-        SELECT id
-        FROM payments
-        WHERE order_id = $1
-          AND status = 'SUCCESS'
-        LIMIT 1
-        `,
-        [orderId]
-      )
-    ).rows[0];
-
-    if (paidPayment) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({
-        message: 'Đơn hàng đã có thanh toán thành công nên không thể hủy'
-      });
-    }
-
-    const cancelled = await client.query(
-      `
-      UPDATE orders
-      SET status = 'CANCELLED',
-          updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-      `,
-      [orderId]
-    );
-
-    let refundedPoints = 0;
-
-    if (order.customer_id && Number(order.points_used || 0) > 0) {
-      refundedPoints = Number(order.points_used);
-
-      await client.query(
-        `
-        UPDATE customers
-        SET points = points + $1,
-            updated_at = NOW()
-        WHERE id = $2
-        `,
-        [refundedPoints, order.customer_id]
-      );
-
-      await client.query(
-        `
-        INSERT INTO customer_point_history(
-          customer_id,
-          branch_id,
-          order_id,
-          amount,
-          points_added,
-          points_used,
-          discount_amount,
-          description
-        )
-        VALUES($1, $2, $3, $4, $5, 0, 0, $6)
-        `,
-        [
-          order.customer_id,
-          order.branch_id,
-          order.id,
-          order.total_amount,
-          refundedPoints,
-          `Hoàn lại ${refundedPoints} điểm do hủy đơn PENDING quá hạn #${order.id}`
-        ]
-      );
-    }
-
-    await client.query('COMMIT');
-
-    if (redis) {
-      await redis.publish('order.cancelled', JSON.stringify({
-        orderId: cancelled.rows[0].id,
-        branchId: cancelled.rows[0].branch_id,
-        customerId: cancelled.rows[0].customer_id,
-        reason: 'PENDING_TIMEOUT',
-        refundedPoints
-      }));
-    }
-
-    res.json({
-      message: 'Hủy đơn PENDING quá hạn thành công',
-      order: cancelled.rows[0],
-      refunded_points: refundedPoints
     });
   } catch (e) {
     await client.query('ROLLBACK');
