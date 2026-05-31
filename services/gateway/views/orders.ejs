@@ -9,7 +9,7 @@
         - <%= user.branchName %>
       <% } %>
     </h1>
-    <p>Lọc, xem chi tiết và xuất hóa đơn cho các đơn hàng đã phát sinh.</p>
+    <p>Lọc, xem chi tiết, hủy đơn quá hạn và xuất hóa đơn cho các đơn hàng đã phát sinh.</p>
   </div>
 </section>
 
@@ -79,10 +79,11 @@
       <th>Thanh toán</th>
       <th>Thời gian</th>
       <th>Hóa đơn</th>
+      <th>Thao tác</th>
     </tr>
 
-    <% orders.forEach(o => { %>
-      <tr>
+    <% orders.forEach(function (o) { %>
+      <tr id="order-row-<%= o.id %>">
         <td>
           <a href="/orders/<%= o.id %>">#<%= o.id %></a>
         </td>
@@ -98,7 +99,9 @@
         </td>
 
         <td>
-          <span class="badge"><%= o.status || '-' %></span>
+          <span class="badge" id="order-status-<%= o.id %>">
+            <%= o.status || '-' %>
+          </span>
         </td>
 
         <td>
@@ -127,14 +130,48 @@
             <span class="muted">Chưa thanh toán</span>
           <% } %>
         </td>
+
+        <td>
+          <% if ((user.role === 'admin' || user.role === 'manager') && o.status === 'PENDING') { %>
+            <button
+              type="button"
+              class="btn danger cancel-order-btn"
+              id="cancel-btn-<%= o.id %>"
+              data-order-id="<%= o.id %>"
+            >
+              Hủy đơn
+            </button>
+          <% } else { %>
+            <span class="muted">-</span>
+          <% } %>
+        </td>
       </tr>
     <% }) %>
   </table>
 <% } %>
 
+<style>
+  .btn.danger {
+    background: #dc2626;
+    color: #fff;
+    border: none;
+  }
+
+  .btn.danger:hover {
+    background: #b91c1c;
+  }
+
+  .btn.danger:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+</style>
+
 <script>
   const toast = document.getElementById('toast');
   const toastMessage = document.getElementById('toastMessage');
+
+  const ORDER_SERVICE_URL = 'http://localhost:4004';
 
   function showToast(message, type = 'success') {
     toast.className = `toast ${type}`;
@@ -148,6 +185,87 @@
   function closeToast() {
     toast.className = 'toast hidden';
   }
+
+  function getToken() {
+    return (
+      localStorage.getItem('token') ||
+      localStorage.getItem('accessToken') ||
+      localStorage.getItem('jwt') ||
+      sessionStorage.getItem('token') ||
+      sessionStorage.getItem('accessToken') ||
+      sessionStorage.getItem('jwt') ||
+      ''
+    );
+  }
+
+  async function cancelPendingOrder(orderId, btn) {
+    const confirmed = confirm(
+      `Bạn có chắc muốn hủy đơn #${orderId} không?\n\nLưu ý: Chỉ hủy được đơn PENDING quá thời gian quy định.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Đang hủy...';
+    }
+
+    try {
+      const token = getToken();
+
+      if (!token) {
+        throw new Error('Không tìm thấy token đăng nhập. Vui lòng đăng nhập lại.');
+      }
+
+      const res = await fetch(`${ORDER_SERVICE_URL}/orders/${orderId}/cancel-pending`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await res.json().catch(function () {
+        return {};
+      });
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Hủy đơn thất bại');
+      }
+
+      showToast(data.message || 'Hủy đơn thành công', 'success');
+
+      const statusEl = document.getElementById(`order-status-${orderId}`);
+
+      if (statusEl) {
+        statusEl.textContent = 'CANCELLED';
+      }
+
+      if (btn) {
+        btn.remove();
+      }
+
+      setTimeout(function () {
+        window.location.reload();
+      }, 800);
+    } catch (err) {
+      showToast(err.message || 'Không thể hủy đơn', 'error');
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Hủy đơn';
+      }
+    }
+  }
+
+  document.querySelectorAll('.cancel-order-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const orderId = this.dataset.orderId;
+      cancelPendingOrder(orderId, this);
+    });
+  });
 
   const filterOrderForm = document.getElementById('filterOrderForm');
 
