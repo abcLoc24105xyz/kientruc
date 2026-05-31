@@ -4,12 +4,14 @@ const morgan = require('morgan');
 const { pool, asyncHandler, authRequired, allowRoles, createRedisClient } = require('./common');
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
 const RANKS = ['MEMBER', 'BRONZE', 'SILVER', 'GOLD', 'DIAMOND'];
 const RANK_LEVEL = Object.fromEntries(RANKS.map((rank, index) => [rank, index]));
+
 const SIX_MONTH_SPENDING_RULES = [
   { rank: 'DIAMOND', min: 2000000 },
   { rank: 'GOLD', min: 1000000 },
@@ -128,9 +130,11 @@ function spendingRank(total) {
 
 function rScoreByRecency(lastPaidAt) {
   if (!lastPaidAt) return 1;
+
   const end = new Date('2026-05-31T23:59:59+07:00');
   const last = new Date(lastPaidAt);
   const diffDays = Math.floor((end - last) / (24 * 60 * 60 * 1000));
+
   if (diffDays <= 7) return 5;
   if (diffDays <= 15) return 4;
   if (diffDays <= 22) return 3;
@@ -140,6 +144,7 @@ function rScoreByRecency(lastPaidAt) {
 
 function fScoreByOrders(orderCount) {
   const count = Number(orderCount || 0);
+
   if (count >= 12) return 5;
   if (count >= 8) return 4;
   if (count >= 4) return 3;
@@ -149,6 +154,7 @@ function fScoreByOrders(orderCount) {
 
 function mScoreByAmount(amount) {
   const total = Number(amount || 0);
+
   if (total >= 1000000) return 5;
   if (total >= 700000) return 4;
   if (total >= 400000) return 3;
@@ -158,6 +164,7 @@ function mScoreByAmount(amount) {
 
 function rfmRank(score) {
   const value = Number(score || 0);
+
   if (value >= 85) return 'DIAMOND';
   if (value >= 70) return 'GOLD';
   if (value >= 55) return 'SILVER';
@@ -174,11 +181,13 @@ function decideNewRank(currentRank, hasRank, proposedRank, customerSpendingRank)
 
   if (proposedLevel > currentLevel) return proposedRank;
   if (spendingLevel >= currentLevel) return currentRank;
+
   return RANKS[Math.max(0, currentLevel - 1)];
 }
 
 async function addPoints(event) {
   const validation = validateOrderPaidPayload(event || {});
+
   if (!validation.valid) {
     throw new Error(validation.errors.join('; '));
   }
@@ -186,7 +195,10 @@ async function addPoints(event) {
   event = validation.data;
 
   const exists = await pool.query(
-    `SELECT id FROM customer_point_history WHERE order_id=$1 AND points_added>0`,
+    `SELECT id
+     FROM customer_point_history
+     WHERE order_id = $1
+       AND points_added > 0`,
     [event.orderId]
   );
 
@@ -203,15 +215,30 @@ async function addPoints(event) {
     await client.query('BEGIN');
 
     const c = await client.query(
-      'UPDATE customers SET points=points+$1,updated_at=NOW() WHERE id=$2 RETURNING *',
+      `UPDATE customers
+       SET points = points + $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
       [points, event.customerId]
     );
 
-    if (!c.rows[0]) throw new Error('Không tìm thấy khách hàng để cộng điểm');
+    if (!c.rows[0]) {
+      throw new Error('Không tìm thấy khách hàng để cộng điểm');
+    }
 
     await client.query(
-      `INSERT INTO customer_point_history(customer_id,branch_id,order_id,amount,points_added,points_used,discount_amount,description)
-       VALUES($1,$2,$3,$4,$5,0,0,$6)`,
+      `INSERT INTO customer_point_history(
+        customer_id,
+        branch_id,
+        order_id,
+        amount,
+        points_added,
+        points_used,
+        discount_amount,
+        description
+      )
+      VALUES($1, $2, $3, $4, $5, 0, 0, $6)`,
       [
         event.customerId,
         event.branchId,
@@ -233,35 +260,38 @@ async function addPoints(event) {
 
 async function evaluateCustomerRank(client, customerId) {
   const customer = (await client.query(
-    `SELECT id, tier, COALESCE(rank_assigned,false) AS rank_assigned
+    `SELECT id,
+            tier,
+            COALESCE(rank_assigned, false) AS rank_assigned
      FROM customers
-     WHERE id=$1
+     WHERE id = $1
      FOR UPDATE`,
     [customerId]
   )).rows[0];
 
-  if (!customer) throw new Error(`Không tìm thấy khách hàng #${customerId}`);
+  if (!customer) {
+    throw new Error(`Không tìm thấy khách hàng #${customerId}`);
+  }
 
   const monthStats = (await client.query(
-    `SELECT
-        MAX(paid_at) AS last_paid_at,
-        COUNT(*)::int AS order_count,
-        COALESCE(SUM(COALESCE(NULLIF(final_amount,0), total_amount)),0)::numeric AS month_spent
+    `SELECT MAX(paid_at) AS last_paid_at,
+            COUNT(*)::int AS order_count,
+            COALESCE(SUM(COALESCE(NULLIF(final_amount, 0), total_amount)), 0)::numeric AS month_spent
      FROM orders
-     WHERE customer_id=$1
-       AND status='PAID'
+     WHERE customer_id = $1
+       AND status = 'PAID'
        AND paid_at >= DATE '2026-05-01'
-       AND paid_at <  DATE '2026-06-01'`,
+       AND paid_at < DATE '2026-06-01'`,
     [customerId]
   )).rows[0];
 
   const sixMonthStats = (await client.query(
-    `SELECT COALESCE(SUM(COALESCE(NULLIF(final_amount,0), total_amount)),0)::numeric AS spending_6m
+    `SELECT COALESCE(SUM(COALESCE(NULLIF(final_amount, 0), total_amount)), 0)::numeric AS spending_6m
      FROM orders
-     WHERE customer_id=$1
-       AND status='PAID'
+     WHERE customer_id = $1
+       AND status = 'PAID'
        AND paid_at >= DATE '2025-12-01'
-       AND paid_at <  DATE '2026-06-01'`,
+       AND paid_at < DATE '2026-06-01'`,
     [customerId]
   )).rows[0];
 
@@ -273,6 +303,7 @@ async function evaluateCustomerRank(client, customerId) {
   const calculatedRfmRank = rfmRank(score);
   const calculatedSpendingRank = spendingRank(sixMonthStats.spending_6m);
   const proposedRank = lowerRank(calculatedRfmRank, calculatedSpendingRank);
+
   const newRank = decideNewRank(
     customer.tier,
     customer.rank_assigned,
@@ -282,19 +313,31 @@ async function evaluateCustomerRank(client, customerId) {
 
   const updated = (await client.query(
     `UPDATE customers
-     SET tier=$1,
-         rank_assigned=TRUE,
-         r_score=$2,
-         f_score=$3,
-         m_score=$4,
-         rfm_score=$5,
-         rfm_rank=$6,
-         spending_6m=$7,
-         spending_rank=$8,
-         last_rank_evaluated_at=NOW(),
-         updated_at=NOW()
-     WHERE id=$9
-     RETURNING id,name,phone,tier,rank_assigned,r_score,f_score,m_score,rfm_score,rfm_rank,spending_6m,spending_rank,last_rank_evaluated_at`,
+     SET tier = $1,
+         rank_assigned = TRUE,
+         r_score = $2,
+         f_score = $3,
+         m_score = $4,
+         rfm_score = $5,
+         rfm_rank = $6,
+         spending_6m = $7,
+         spending_rank = $8,
+         last_rank_evaluated_at = NOW(),
+         updated_at = NOW()
+     WHERE id = $9
+     RETURNING id,
+               name,
+               phone,
+               tier,
+               rank_assigned,
+               r_score,
+               f_score,
+               m_score,
+               rfm_score,
+               rfm_rank,
+               spending_6m,
+               spending_rank,
+               last_rank_evaluated_at`,
     [
       newRank,
       r,
@@ -331,20 +374,30 @@ createRedisClient()
   })
   .catch(e => console.error('redis subscriber error', e.message));
 
-app.get('/health', (req, res) => res.json({ service: 'loyalty-service', ok: true }));
+app.get('/health', (req, res) => {
+  res.json({
+    service: 'loyalty-service',
+    ok: true
+  });
+});
 
 app.get('/customers', authRequired, asyncHandler(async (req, res) => {
   const params = [];
-  let where = `WHERE c.status<>'DELETED'`;
+  let where = `WHERE c.status <> 'DELETED'`;
 
   if (req.user.role === 'customer') {
     params.push(req.user.customerId);
-    where += ` AND c.id=$${params.length}`;
+    where += ` AND c.id = $${params.length}`;
   }
 
   if ((req.user.role === 'manager' || req.user.role === 'staff') && req.user.type === 'staff') {
     params.push(req.user.branchId);
-    where += ` AND EXISTS(SELECT 1 FROM orders o2 WHERE o2.customer_id=c.id AND o2.branch_id=$${params.length})`;
+    where += ` AND EXISTS (
+      SELECT 1
+      FROM orders o2
+      WHERE o2.customer_id = c.id
+        AND o2.branch_id = $${params.length}
+    )`;
   }
 
   const search = cleanString(req.query.search);
@@ -355,15 +408,19 @@ app.get('/customers', authRequired, asyncHandler(async (req, res) => {
 
   if (search) {
     params.push('%' + search.toLowerCase() + '%');
-    where += ` AND (LOWER(c.name) LIKE $${params.length} OR LOWER(COALESCE(c.email,'')) LIKE $${params.length} OR c.phone LIKE $${params.length})`;
+    where += ` AND (
+      LOWER(c.name) LIKE $${params.length}
+      OR LOWER(COALESCE(c.email, '')) LIKE $${params.length}
+      OR c.phone LIKE $${params.length}
+    )`;
   }
 
   const { rows } = await pool.query(
     `SELECT c.*,
-            COALESCE(SUM(o.final_amount) FILTER (WHERE o.status='PAID'),0)::numeric total_spent,
-            COUNT(o.id) FILTER (WHERE o.status='PAID')::int total_orders
+            COALESCE(SUM(o.final_amount) FILTER (WHERE o.status = 'PAID'), 0)::numeric AS total_spent,
+            COUNT(o.id) FILTER (WHERE o.status = 'PAID')::int AS total_orders
      FROM customers c
-     LEFT JOIN orders o ON o.customer_id=c.id
+     LEFT JOIN orders o ON o.customer_id = c.id
      ${where}
      GROUP BY c.id
      ORDER BY CASE c.tier
@@ -371,7 +428,10 @@ app.get('/customers', authRequired, asyncHandler(async (req, res) => {
        WHEN 'GOLD' THEN 4
        WHEN 'SILVER' THEN 3
        WHEN 'BRONZE' THEN 2
-       ELSE 1 END DESC, c.points DESC, c.id`,
+       ELSE 1
+     END DESC,
+     c.points DESC,
+     c.id`,
     params
   );
 
@@ -380,6 +440,7 @@ app.get('/customers', authRequired, asyncHandler(async (req, res) => {
 
 app.post('/customers/evaluate-ranks', authRequired, allowRoles('admin', 'manager'), asyncHandler(async (req, res) => {
   const rawCustomerId = req.body.customer_id;
+
   const customerId = rawCustomerId == null || rawCustomerId === ''
     ? null
     : toPositiveInteger(rawCustomerId);
@@ -390,7 +451,7 @@ app.post('/customers/evaluate-ranks', authRequired, allowRoles('admin', 'manager
 
   const customerIds = customerId ? [customerId] : null;
   const params = [];
-  let where = `WHERE status<>'DELETED'`;
+  let where = `WHERE status <> 'DELETED'`;
 
   if (customerIds) {
     params.push(customerIds);
@@ -399,11 +460,19 @@ app.post('/customers/evaluate-ranks', authRequired, allowRoles('admin', 'manager
 
   if (req.user.role === 'manager' && req.user.type === 'staff') {
     params.push(req.user.branchId);
-    where += ` AND EXISTS(SELECT 1 FROM orders o WHERE o.customer_id=customers.id AND o.branch_id=$${params.length})`;
+    where += ` AND EXISTS (
+      SELECT 1
+      FROM orders o
+      WHERE o.customer_id = customers.id
+        AND o.branch_id = $${params.length}
+    )`;
   }
 
   const ids = (await pool.query(
-    `SELECT id FROM customers ${where} ORDER BY id`,
+    `SELECT id
+     FROM customers
+     ${where}
+     ORDER BY id`,
     params
   )).rows.map(r => r.id);
 
@@ -413,6 +482,7 @@ app.post('/customers/evaluate-ranks', authRequired, allowRoles('admin', 'manager
     await client.query('BEGIN');
 
     const results = [];
+
     for (const id of ids) {
       results.push(await evaluateCustomerRank(client, id));
     }
@@ -452,7 +522,9 @@ app.post('/customers/deduct-half-cycle', authRequired, allowRoles('admin', 'mana
     }
 
     const customers = await client.query(
-      `SELECT id, name, points
+      `SELECT id,
+              name,
+              points
        FROM customers
        ${where}
        FOR UPDATE`,
@@ -479,10 +551,18 @@ app.post('/customers/deduct-half-cycle', authRequired, allowRoles('admin', 'mana
       );
 
       await client.query(
-        `INSERT INTO customer_point_history
-          (customer_id, branch_id, order_id, amount, points_added, points_used, discount_amount, description, purchase_date)
-         VALUES
-          ($1, NULL, NULL, 0, 0, $2, 0, $3, NOW())`,
+        `INSERT INTO customer_point_history(
+          customer_id,
+          branch_id,
+          order_id,
+          amount,
+          points_added,
+          points_used,
+          discount_amount,
+          description,
+          purchase_date
+        )
+        VALUES($1, NULL, NULL, 0, 0, $2, 0, $3, NOW())`,
         [
           customer.id,
           deductPoints,
@@ -546,7 +626,10 @@ app.post('/customers/:id/deduct-points', authRequired, allowRoles('admin', 'mana
     }
 
     const customerRes = await client.query(
-      `SELECT id, name, phone, points
+      `SELECT id,
+              name,
+              phone,
+              points
        FROM customers
        WHERE id = $1
          AND status <> 'DELETED'
@@ -557,6 +640,7 @@ app.post('/customers/:id/deduct-points', authRequired, allowRoles('admin', 'mana
 
     if (!customerRes.rows.length) {
       await client.query('ROLLBACK');
+
       return res.status(404).json({
         message: 'Không tìm thấy khách hàng trong phạm vi quản lý'
       });
@@ -569,6 +653,7 @@ app.post('/customers/:id/deduct-points', authRequired, allowRoles('admin', 'mana
 
     if (deductPoints <= 0) {
       await client.query('ROLLBACK');
+
       return res.status(400).json({
         message: 'Số điểm trừ phải lớn hơn 0'
       });
@@ -590,10 +675,18 @@ app.post('/customers/:id/deduct-points', authRequired, allowRoles('admin', 'mana
     );
 
     await client.query(
-      `INSERT INTO customer_point_history
-        (customer_id, branch_id, order_id, amount, points_added, points_used, discount_amount, description, purchase_date)
-       VALUES
-        ($1, NULL, NULL, 0, 0, $2, 0, $3, NOW())`,
+      `INSERT INTO customer_point_history(
+        customer_id,
+        branch_id,
+        order_id,
+        amount,
+        points_added,
+        points_used,
+        discount_amount,
+        description,
+        purchase_date
+      )
+      VALUES($1, NULL, NULL, 0, 0, $2, 0, $3, NOW())`,
       [customerId, deductPoints, description]
     );
 
@@ -623,16 +716,23 @@ app.get('/customers/:id', authRequired, asyncHandler(async (req, res) => {
   }
 
   if (req.user.role === 'customer' && customerId !== Number(req.user.customerId)) {
-    return res.status(403).json({ message: 'Không được xem khách khác' });
+    return res.status(403).json({
+      message: 'Không được xem khách khác'
+    });
   }
 
   const { rows } = await pool.query(
-    `SELECT * FROM customers WHERE id=$1 AND status<>'DELETED'`,
+    `SELECT *
+     FROM customers
+     WHERE id = $1
+       AND status <> 'DELETED'`,
     [customerId]
   );
 
   if (!rows[0]) {
-    return res.status(404).json({ message: 'Không tìm thấy khách hàng' });
+    return res.status(404).json({
+      message: 'Không tìm thấy khách hàng'
+    });
   }
 
   res.json(rows[0]);
@@ -651,19 +751,25 @@ app.put('/customers/:id/address', authRequired, asyncHandler(async (req, res) =>
   }
 
   if (req.user.role === 'customer' && customerId !== Number(req.user.customerId)) {
-    return res.status(403).json({ message: 'Không được sửa khách khác' });
+    return res.status(403).json({
+      message: 'Không được sửa khách khác'
+    });
   }
 
   const { rows } = await pool.query(
     `UPDATE customers
-     SET address=$1,updated_at=NOW()
-     WHERE id=$2 AND status<>'DELETED'
+     SET address = $1,
+         updated_at = NOW()
+     WHERE id = $2
+       AND status <> 'DELETED'
      RETURNING *`,
     [address || null, customerId]
   );
 
   if (!rows[0]) {
-    return res.status(404).json({ message: 'Không tìm thấy khách hàng' });
+    return res.status(404).json({
+      message: 'Không tìm thấy khách hàng'
+    });
   }
 
   res.json(rows[0]);
@@ -676,11 +782,28 @@ app.post('/customers', authRequired, allowRoles('admin', 'manager', 'staff'), as
     return sendValidationError(res, validation.errors);
   }
 
-  const { username, password, name, phone, email, address } = validation.data;
+  const {
+    username,
+    password,
+    name,
+    phone,
+    email,
+    address
+  } = validation.data;
 
   const { rows } = await pool.query(
-    `INSERT INTO customers(username,password,name,phone,email,address,rank_assigned,tier)
-     VALUES($1,$2,$3,$4,$5,$6,FALSE,'MEMBER') RETURNING *`,
+    `INSERT INTO customers(
+      username,
+      password,
+      name,
+      phone,
+      email,
+      address,
+      rank_assigned,
+      tier
+    )
+    VALUES($1, $2, $3, $4, $5, $6, FALSE, 'MEMBER')
+    RETURNING *`,
     [username, password, name, phone, email, address]
   );
 
@@ -695,7 +818,9 @@ app.get('/customers/:id/history', authRequired, asyncHandler(async (req, res) =>
   }
 
   if (req.user.role === 'customer' && customerId !== Number(req.user.customerId)) {
-    return res.status(403).json({ message: 'Không được xem lịch sử khách khác' });
+    return res.status(403).json({
+      message: 'Không được xem lịch sử khách khác'
+    });
   }
 
   const params = [customerId];
@@ -703,16 +828,22 @@ app.get('/customers/:id/history', authRequired, asyncHandler(async (req, res) =>
 
   if (req.user.role === 'manager' || req.user.role === 'staff') {
     params.push(req.user.branchId);
-    branchFilter = ` AND (h.branch_id=$${params.length} OR h.branch_id IS NULL)`;
+    branchFilter = ` AND (h.branch_id = $${params.length} OR h.branch_id IS NULL)`;
   }
 
   const { rows } = await pool.query(
-    `SELECT h.*, b.name branch_name, o.final_amount, o.discount_amount, o.points_used, o.status
+    `SELECT h.*,
+            b.name AS branch_name,
+            o.final_amount,
+            o.discount_amount,
+            o.points_used,
+            o.status
      FROM customer_point_history h
-     LEFT JOIN branches b ON b.id=h.branch_id
-     LEFT JOIN orders o ON o.id=h.order_id
-     WHERE h.customer_id=$1 ${branchFilter}
-     ORDER BY h.purchase_date DESC,h.id DESC`,
+     LEFT JOIN branches b ON b.id = h.branch_id
+     LEFT JOIN orders o ON o.id = h.order_id
+     WHERE h.customer_id = $1
+       ${branchFilter}
+     ORDER BY h.purchase_date DESC, h.id DESC`,
     params
   );
 
@@ -729,25 +860,24 @@ app.get('/lookup', authRequired, allowRoles('admin', 'manager', 'staff'), asyncH
   }
 
   const params = ['%' + q + '%'];
-  let branchFilter = '';
-
-  if (req.user.role === 'manager' || req.user.role === 'staff') {
-    params.push(req.user.branchId);
-    branchFilter = ` AND EXISTS(SELECT 1 FROM orders o WHERE o.customer_id=c.id AND o.branch_id=$${params.length})`;
-  }
 
   const customer = (await pool.query(
-    `SELECT * FROM customers c
-     WHERE c.status<>'DELETED'
-       AND (LOWER(c.name) LIKE $1 OR LOWER(COALESCE(c.email,'')) LIKE $1 OR c.phone LIKE $1)
-       ${branchFilter}
-     ORDER BY c.id LIMIT 1`,
+    `SELECT *
+     FROM customers c
+     WHERE c.status <> 'DELETED'
+       AND (
+         LOWER(c.name) LIKE $1
+         OR LOWER(COALESCE(c.email, '')) LIKE $1
+         OR c.phone LIKE $1
+       )
+     ORDER BY c.id
+     LIMIT 1`,
     params
   )).rows[0];
 
   if (!customer) {
     return res.status(404).json({
-      message: 'Không tìm thấy khách hàng trong phạm vi chi nhánh'
+      message: 'Không tìm thấy khách hàng'
     });
   }
 
@@ -763,7 +893,9 @@ app.post('/events/order-paid', authRequired, asyncHandler(async (req, res) => {
 
   await addPoints(validation.data);
 
-  res.json({ ok: true });
+  res.json({
+    ok: true
+  });
 }));
 
 app.use((err, req, res, next) => {
