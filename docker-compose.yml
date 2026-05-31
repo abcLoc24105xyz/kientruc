@@ -59,6 +59,8 @@ services:
       args:
         SERVICE_PATH: services/order-service
     env_file: .env
+    ports:
+      - "4004:4004"
     depends_on:
       - redis
 
