@@ -254,6 +254,61 @@ app.get('/health', (req, res) => {
 });
 
 /* =========================
+   POS CUSTOMER LIST
+   Màn bán hàng lấy toàn bộ khách hàng từ bảng customers.
+   Không lấy từ orders, vì orders chỉ có khách đã từng mua.
+========================= */
+
+app.get('/pos/customers', authRequired, asyncHandler(async (req, res) => {
+  if (!['staff', 'manager', 'admin'].includes(req.user.role)) {
+    return res.status(403).json({
+      message: 'Chỉ staff/manager/admin được xem danh sách khách hàng khi bán hàng'
+    });
+  }
+
+  const q = cleanString(req.query.q);
+  const limit = Math.min(toPositiveInteger(req.query.limit) || 500, 1000);
+
+  const params = [];
+  let where = `WHERE COALESCE(status, 'ACTIVE') <> 'DELETED'`;
+
+  if (q) {
+    params.push(`%${q.toLowerCase()}%`);
+    where += `
+      AND (
+        LOWER(COALESCE(name, '')) LIKE $${params.length}
+        OR LOWER(COALESCE(phone, '')) LIKE $${params.length}
+        OR LOWER(COALESCE(email, '')) LIKE $${params.length}
+      )
+    `;
+  }
+
+  params.push(limit);
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      id,
+      name,
+      phone,
+      email,
+      points,
+      rank,
+      status,
+      created_at,
+      updated_at
+    FROM customers
+    ${where}
+    ORDER BY name ASC, id ASC
+    LIMIT $${params.length}
+    `,
+    params
+  );
+
+  res.json(rows);
+}));
+
+/* =========================
    LIST ORDERS
 ========================= */
 
