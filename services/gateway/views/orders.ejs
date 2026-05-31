@@ -13,6 +13,13 @@
   </div>
 </section>
 
+<div
+  id="currentUserData"
+  data-user-id="<%= user.id || '' %>"
+  data-user-role="<%= user.role || '' %>"
+  data-user-branch-id="<%= user.branchId || user.branch_id || '' %>"
+></div>
+
 <div id="toast" class="toast hidden">
   <span id="toastMessage"></span>
   <button type="button" onclick="closeToast()">×</button>
@@ -170,8 +177,15 @@
 <script>
   const toast = document.getElementById('toast');
   const toastMessage = document.getElementById('toastMessage');
+  const userDataEl = document.getElementById('currentUserData');
 
   const ORDER_SERVICE_URL = 'http://localhost:4004';
+
+  const CURRENT_USER = {
+    id: userDataEl ? userDataEl.dataset.userId : '',
+    role: userDataEl ? userDataEl.dataset.userRole : '',
+    branchId: userDataEl ? userDataEl.dataset.userBranchId : ''
+  };
 
   function showToast(message, type = 'success') {
     toast.className = `toast ${type}`;
@@ -184,18 +198,6 @@
 
   function closeToast() {
     toast.className = 'toast hidden';
-  }
-
-  function getToken() {
-    return (
-      localStorage.getItem('token') ||
-      localStorage.getItem('accessToken') ||
-      localStorage.getItem('jwt') ||
-      sessionStorage.getItem('token') ||
-      sessionStorage.getItem('accessToken') ||
-      sessionStorage.getItem('jwt') ||
-      ''
-    );
   }
 
   async function cancelPendingOrder(orderId, btn) {
@@ -213,17 +215,13 @@
     }
 
     try {
-      const token = getToken();
-
-      if (!token) {
-        throw new Error('Không tìm thấy token đăng nhập. Vui lòng đăng nhập lại.');
-      }
-
       const res = await fetch(`${ORDER_SERVICE_URL}/orders/${orderId}/cancel-pending`, {
         method: 'PATCH',
         headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-User-Id': CURRENT_USER.id,
+          'X-User-Role': CURRENT_USER.role,
+          'X-User-Branch-Id': CURRENT_USER.branchId
         }
       });
 

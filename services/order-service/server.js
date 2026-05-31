@@ -12,7 +12,19 @@ const {
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-User-Id',
+    'X-User-Role',
+    'X-User-Branch-Id'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+}));
+
 app.use(express.json());
 app.use(morgan('dev'));
 
@@ -75,6 +87,23 @@ function sendValidationError(res, errors) {
     message: 'Dữ liệu không hợp lệ',
     errors
   });
+}
+
+/**
+ * Dùng riêng cho route hủy đơn khi frontend gọi thẳng order-service.
+ * Frontend gửi role/branchId từ session EJS qua header:
+ * X-User-Role, X-User-Branch-Id, X-User-Id
+ */
+function getFrontendActor(req) {
+  const role = cleanString(req.headers['x-user-role']).toLowerCase();
+  const branchId = toPositiveInteger(req.headers['x-user-branch-id']);
+  const userId = toPositiveInteger(req.headers['x-user-id']);
+
+  return {
+    role,
+    branchId,
+    userId
+  };
 }
 
 function validateOrderQuery(query) {
@@ -751,22 +780,28 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
 
 /* =========================
    CANCEL PENDING ORDER TIMEOUT
-   Admin: hủy đơn quá hạn toàn hệ thống
-   Manager: chỉ hủy đơn quá hạn thuộc chi nhánh của mình
-   Frontend gọi trực tiếp order-service:
+   Frontend gọi thẳng order-service, không cần token:
    PATCH http://localhost:4004/orders/:id/cancel-pending
 ========================= */
 
-app.patch('/orders/:id/cancel-pending', authRequired, asyncHandler(async (req, res) => {
+app.patch('/orders/:id/cancel-pending', asyncHandler(async (req, res) => {
   const orderId = toPositiveInteger(req.params.id);
 
   if (!orderId) {
     return sendValidationError(res, ['Mã đơn hàng không hợp lệ']);
   }
 
-  if (!['admin', 'manager'].includes(req.user.role)) {
+  const actor = getFrontendActor(req);
+
+  if (!['admin', 'manager'].includes(actor.role)) {
     return res.status(403).json({
       message: 'Chỉ admin hoặc manager được hủy đơn PENDING quá hạn'
+    });
+  }
+
+  if (actor.role === 'manager' && !actor.branchId) {
+    return res.status(403).json({
+      message: 'Không xác định được chi nhánh của manager'
     });
   }
 
@@ -795,8 +830,8 @@ app.patch('/orders/:id/cancel-pending', authRequired, asyncHandler(async (req, r
     }
 
     if (
-      req.user.role === 'manager' &&
-      Number(order.branch_id) !== Number(req.user.branchId)
+      actor.role === 'manager' &&
+      Number(order.branch_id) !== Number(actor.branchId)
     ) {
       await client.query('ROLLBACK');
       return res.status(403).json({
