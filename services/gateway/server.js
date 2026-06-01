@@ -740,6 +740,41 @@ app.get('/customer/thank-you', requireLogin, (req, res) => {
   });
 });
 
+app.get('/api/customer/menu', requireLogin, async (req, res) => {
+  try {
+    if (req.session.user.role !== 'customer') {
+      return res.status(403).json({
+        message: 'Chỉ khách hàng được xem menu đặt hàng'
+      });
+    }
+
+    const branchId = req.query.branch_id;
+    const category = req.query.category || '';
+
+    if (!branchId) {
+      return res.status(400).json({
+        message: 'Thiếu mã chi nhánh'
+      });
+    }
+
+    const menu = await api(
+      req,
+      'menu',
+      'get',
+      `/branch-menus/${branchId}${category ? '?category=' + encodeURIComponent(category) : ''}`
+    );
+
+    return res.json({ menu });
+  } catch (e) {
+    return res.status(e.response?.status || 500).json({
+      message:
+        e.response?.data?.message ||
+        e.response?.data?.detail ||
+        'Không thể tải menu'
+    });
+  }
+});
+
 app.use((err, req, res, next) => {
   console.error(err.response?.data || err.message);
 

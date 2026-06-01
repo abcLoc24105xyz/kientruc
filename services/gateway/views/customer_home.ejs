@@ -1,15 +1,28 @@
 <%- include('partials/header') %>
 
-<section class="hero shop-hero">
+<%
+  const safeCustomer = typeof customer !== 'undefined' && customer ? customer : {};
+  const safeBranches = typeof branches !== 'undefined' && Array.isArray(branches) ? branches : [];
+  const safeBranchId = typeof branchId !== 'undefined' ? branchId : '';
+  const safeCategories = typeof categories !== 'undefined' && Array.isArray(categories) ? categories : [];
+  const safeCategory = typeof category !== 'undefined' ? category : '';
+  const safeMenu = typeof menu !== 'undefined' && Array.isArray(menu) ? menu : [];
+  const safeError = typeof error !== 'undefined' ? error : null;
+%>
+
+<section class="hero shop-hero customer-shop-hero">
   <div>
     <span class="eyebrow">Fresh coffee • Fast delivery</span>
     <h1>Đặt cà phê online</h1>
-    <p>Chọn chi nhánh, chọn món, dùng điểm giảm giá và nhận hóa đơn sau thanh toán.</p>
+    <p>Chọn món nhanh, lọc danh mục không tải lại trang, dùng điểm giảm giá và theo dõi giỏ hàng ngay bên cạnh.</p>
   </div>
 
-  <div class="point-card">
-    <b><%= customer.points %> điểm</b>
-    <span>Quy đổi được <%= Number(customer.points * 500).toLocaleString('vi-VN') %>đ</span>
+  <div class="point-card customer-point-card">
+    <span>Điểm hiện có</span>
+    <b><%= Number(safeCustomer.points || 0).toLocaleString('vi-VN') %> điểm</b>
+    <small>
+      Quy đổi được <%= Number((safeCustomer.points || 0) * 500).toLocaleString('vi-VN') %>đ
+    </small>
   </div>
 </section>
 
@@ -18,159 +31,222 @@
   <button type="button" onclick="closeToast()">×</button>
 </div>
 
-<% if (error) { %>
-  <div class="alert"><%= error %></div>
+<% if (safeError) { %>
+  <div class="alert"><%= safeError %></div>
 <% } %>
 
-<form method="get" class="form-inline card toolbar">
-  <label>Chi nhánh</label>
+<div class="shop-layout">
+  <main class="shop-main">
+    <section class="card shop-filter-card">
+      <div class="filter-top">
+        <div>
+          <h2>Chọn chi nhánh & danh mục</h2>
+          <p class="muted">Đổi chi nhánh sẽ tải lại menu của chi nhánh đó. Lọc danh mục dùng AJAX, không tải lại trang.</p>
+        </div>
 
-  <select name="branch_id" onchange="this.form.submit()">
-    <% branches.forEach(b => { %>
-      <option value="<%= b.id %>" <%= Number(branchId) === b.id ? 'selected' : '' %>>
-        <%= b.name %>
-      </option>
-    <% }) %>
-  </select>
+        <div class="branch-select-box">
+          <label for="branchSelect">Chi nhánh</label>
+          <select id="branchSelect" name="branch_id">
+            <% safeBranches.forEach(b => { %>
+              <option value="<%= b.id %>" <%= Number(safeBranchId) === Number(b.id) ? 'selected' : '' %>>
+                <%= b.name %>
+              </option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
 
-  <label>Danh mục</label>
+      <div class="category-tabs" id="categoryTabs">
+        <button
+          type="button"
+          class="category-tab <%= !safeCategory ? 'active' : '' %>"
+          data-category=""
+        >
+          Tất cả
+        </button>
 
-  <select name="category" onchange="this.form.submit()">
-    <option value="">Tất cả sản phẩm</option>
+        <% safeCategories.forEach(c => { %>
+          <button
+            type="button"
+            class="category-tab <%= safeCategory === c ? 'active' : '' %>"
+            data-category="<%= c %>"
+          >
+            <%= c %>
+          </button>
+        <% }) %>
+      </div>
 
-    <% categories.forEach(c => { %>
-      <option value="<%= c %>" <%= category === c ? 'selected' : '' %>>
-        <%= c %>
-      </option>
-    <% }) %>
-  </select>
-</form>
+      <div class="shop-search-row">
+        <input
+          type="search"
+          id="productSearchInput"
+          placeholder="Tìm món theo tên..."
+          autocomplete="off"
+        >
 
-<section class="two">
-  <form
-    method="post"
-    action="/customer/order"
-    class="card order-panel"
-    id="orderForm"
-  >
-    <input type="hidden" name="branch_id" value="<%= branchId %>">
+        <span id="menuCount" class="muted"></span>
+      </div>
+    </section>
 
-    <h2>Sản phẩm</h2>
-
-    <div class="product-grid">
-      <% menu.forEach(m => { %>
-        <article class="product-card">
-          <img src="<%= m.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=500' %>">
-
-          <div class="product-info">
-            <span class="pill"><%= m.category %></span>
-
-            <h3><%= m.name %></h3>
-
-            <p><%= m.description || 'Món ngon tại chi nhánh' %></p>
-
-            <strong data-price="<%= m.price %>">
-              <%= Number(m.price).toLocaleString('vi-VN') %>đ
-            </strong>
-
-            <div class="buy-row">
-              <label>
-                <input
-                  class="choose"
-                  type="checkbox"
-                  name="menu_item_id"
-                  value="<%= m.menu_item_id %>"
-                >
-                Chọn
-              </label>
-
-              <input
-                class="qty"
-                type="number"
-                name="quantity_<%= m.menu_item_id %>"
-                value="1"
-                min="1"
-              >
-            </div>
-          </div>
-        </article>
-      <% }) %>
-    </div>
-
-    <h2>Giao hàng & điểm</h2>
-
-    <label>Địa chỉ giao hàng mặc định</label>
-
-    <div class="address-box">
-      <input
-        id="deliveryAddress"
-        name="delivery_address"
-        value="<%= customer.address || '' %>"
-        readonly
-        required
-      >
-
-      <button type="button" class="light" onclick="enableAddressEdit()">
-        Sửa địa chỉ
-      </button>
-    </div>
-
-    <label>Dùng điểm giảm giá</label>
-
-    <input
-      id="usePoints"
-      type="number"
-      name="use_points"
-      min="0"
-      max="<%= customer.points %>"
-      value="0"
+    <form
+      method="post"
+      action="/customer/order"
+      class="shop-order-form"
+      id="orderForm"
     >
+      <input type="hidden" name="branch_id" id="branchIdInput" value="<%= safeBranchId %>">
 
-    <small>
-      Bạn có <b><%= customer.points %></b> điểm =
-      <b><%= Number(customer.points * 500).toLocaleString('vi-VN') %>đ</b>.
-      1 điểm = 500đ. Nếu nhập quá điểm, hệ thống sẽ báo không đủ điểm.
-    </small>
+      <section class="card products-section">
+        <div class="section-title-row">
+          <div>
+            <h2>Sản phẩm</h2>
+            <p class="muted">Bấm “Thêm” để đưa món vào giỏ. Có thể tăng/giảm số lượng ở giỏ hàng.</p>
+          </div>
 
-    <textarea name="note" placeholder="Ghi chú cho cửa hàng"></textarea>
+          <div id="menuLoading" class="menu-loading hidden">
+            Đang tải...
+          </div>
+        </div>
 
-    <button class="primary" type="submit">Xác nhận đặt hàng</button>
-  </form>
+        <div id="productGrid" class="customer-product-grid"></div>
 
-  <aside class="card cart-card">
-    <h2>Tóm tắt đơn</h2>
+        <div id="emptyMenuState" class="empty-state hidden">
+          <h2>Không có sản phẩm</h2>
+          <p class="muted">Không tìm thấy món phù hợp với danh mục hoặc từ khóa hiện tại.</p>
+        </div>
+      </section>
 
-    <div id="cartItems" class="muted">Chưa chọn sản phẩm</div>
+      <section class="card delivery-card">
+        <h2>Giao hàng & điểm</h2>
+
+        <label for="deliveryAddress">Địa chỉ giao hàng</label>
+
+        <div class="address-box">
+          <input
+            id="deliveryAddress"
+            name="delivery_address"
+            value="<%= safeCustomer.address || '' %>"
+            readonly
+            required
+          >
+
+          <button type="button" class="light" onclick="enableAddressEdit()">
+            Sửa địa chỉ
+          </button>
+        </div>
+
+        <label for="usePoints">Dùng điểm giảm giá</label>
+
+        <input
+          id="usePoints"
+          type="number"
+          name="use_points"
+          min="0"
+          max="<%= safeCustomer.points || 0 %>"
+          value="0"
+        >
+
+        <small>
+          Bạn có <b><%= Number(safeCustomer.points || 0).toLocaleString('vi-VN') %></b> điểm =
+          <b><%= Number((safeCustomer.points || 0) * 500).toLocaleString('vi-VN') %>đ</b>.
+          1 điểm = 500đ.
+        </small>
+
+        <label for="note">Ghi chú cho cửa hàng</label>
+        <textarea
+          id="note"
+          name="note"
+          placeholder="Ví dụ: ít đá, giao giờ nghỉ trưa, gọi trước khi giao..."
+        ></textarea>
+
+        <div id="orderHiddenInputs"></div>
+      </section>
+    </form>
+
+    <form method="post" action="/customer/address" class="card address-update-card" id="addressForm">
+      <h2>Cập nhật địa chỉ giao hàng mặc định</h2>
+
+      <div class="address-save-row">
+        <input
+          name="address"
+          id="defaultAddress"
+          value="<%= safeCustomer.address || '' %>"
+          required
+        >
+
+        <button type="submit">Lưu địa chỉ</button>
+      </div>
+    </form>
+  </main>
+
+  <aside class="card cart-card customer-cart-card">
+    <div class="cart-header">
+      <div>
+        <h2>Giỏ hàng</h2>
+        <p class="muted">Theo dõi món đã chọn và tổng tiền.</p>
+      </div>
+    </div>
+
+    <div id="cartItems" class="customer-cart-items muted">
+      Chưa chọn sản phẩm
+    </div>
 
     <hr>
 
-    <p>Tạm tính: <b id="subtotal">0đ</b></p>
-    <p>Giảm điểm: <b id="discount">0đ</b></p>
-    <p>Thanh toán: <b id="finalTotal">0đ</b></p>
+    <div class="cart-money-row">
+      <span>Tạm tính</span>
+      <b id="subtotal">0đ</b>
+    </div>
 
-    <p class="muted">
-      Sau khi thanh toán thành công, hệ thống tự cộng điểm theo tỷ lệ
-      10.000đ = 1 điểm.
+    <div class="cart-money-row">
+      <span>Giảm điểm</span>
+      <b id="discount">0đ</b>
+    </div>
+
+    <div class="cart-money-row final">
+      <span>Thanh toán</span>
+      <b id="finalTotal">0đ</b>
+    </div>
+
+    <button class="primary cart-submit-btn" type="submit" form="orderForm">
+      Xác nhận đặt hàng
+    </button>
+
+    <p class="muted cart-note">
+      Sau khi thanh toán thành công, hệ thống tự cộng điểm theo tỷ lệ 10.000đ = 1 điểm.
     </p>
   </aside>
-</section>
+</div>
 
-<form method="post" action="/customer/address" class="card" id="addressForm">
-  <h2>Cập nhật địa chỉ giao hàng mặc định</h2>
-
-  <input
-    name="address"
-    id="defaultAddress"
-    value="<%= customer.address || '' %>"
-    required
-  >
-
-  <button type="submit">Lưu địa chỉ</button>
-</form>
+<div
+  id="initialShopData"
+  class="hidden"
+  data-menu="<%= encodeURIComponent(JSON.stringify(safeMenu)) %>"
+  data-category="<%= encodeURIComponent(safeCategory) %>"
+></div>
 
 <script>
   const toast = document.getElementById('toast');
   const toastMessage = document.getElementById('toastMessage');
+  const selectedProducts = new Map();
+
+  const initialShopData = document.getElementById('initialShopData');
+
+  let currentMenu = [];
+  let currentCategory = '';
+  let searchKeyword = '';
+
+  try {
+    currentMenu = JSON.parse(decodeURIComponent(initialShopData.dataset.menu || '%5B%5D'));
+  } catch (err) {
+    currentMenu = [];
+  }
+
+  try {
+    currentCategory = decodeURIComponent(initialShopData.dataset.category || '');
+  } catch (err) {
+    currentCategory = '';
+  }
 
   function showToast(message, type = 'success') {
     toast.className = `toast ${type}`;
@@ -189,47 +265,286 @@
     return Number(n || 0).toLocaleString('vi-VN') + 'đ';
   }
 
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   function enableAddressEdit() {
     const input = document.getElementById('deliveryAddress');
+
     input.removeAttribute('readonly');
     input.focus();
   }
 
-  function getSelectedItems() {
-    const selectedItems = [];
+  function getProductId(product) {
+    return String(product.menu_item_id || product.id || '');
+  }
 
-    document.querySelectorAll('.product-card').forEach(card => {
-      const checkbox = card.querySelector('.choose');
-      const quantityInput = card.querySelector('.qty');
-      const priceElement = card.querySelector('[data-price]');
-      const nameElement = card.querySelector('h3');
+  function normalizeProduct(product) {
+    return {
+      id: getProductId(product),
+      menu_item_id: product.menu_item_id || product.id,
+      name: product.name || '',
+      category: product.category || 'Khác',
+      description: product.description || 'Món ngon tại chi nhánh',
+      price: Number(product.price || product.base_price || 0),
+      image_url: product.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=500'
+    };
+  }
 
-      const quantity = Number(quantityInput.value || 1);
-      const price = Number(priceElement.dataset.price || 0);
-      const name = nameElement.textContent.trim();
+  function filteredMenu() {
+    const keyword = searchKeyword.trim().toLowerCase();
 
-      if (checkbox.checked) {
-        selectedItems.push({
-          name,
-          quantity,
-          price,
-          quantityInput
-        });
-      }
+    return currentMenu
+      .map(normalizeProduct)
+      .filter(product => {
+        const matchKeyword = !keyword || product.name.toLowerCase().includes(keyword);
+        return matchKeyword;
+      });
+  }
+
+  function setLoading(isLoading) {
+    const loading = document.getElementById('menuLoading');
+
+    if (!loading) return;
+
+    if (isLoading) {
+      loading.classList.remove('hidden');
+    } else {
+      loading.classList.add('hidden');
+    }
+  }
+
+  function renderMenu() {
+    const productGrid = document.getElementById('productGrid');
+    const emptyMenuState = document.getElementById('emptyMenuState');
+    const menuCount = document.getElementById('menuCount');
+
+    const products = filteredMenu();
+
+    menuCount.textContent = products.length ? products.length + ' món' : '0 món';
+
+    if (!products.length) {
+      productGrid.innerHTML = '';
+      emptyMenuState.classList.remove('hidden');
+      return;
+    }
+
+    emptyMenuState.classList.add('hidden');
+
+    productGrid.innerHTML = products.map(product => {
+      const selected = selectedProducts.get(String(product.id));
+      const quantity = selected ? selected.quantity : 0;
+      const safeId = encodeURIComponent(product.id);
+
+      return `
+        <article class="customer-product-card ${quantity > 0 ? 'selected' : ''}">
+          <div class="product-image-wrap">
+            <img src="${escapeHtml(product.image_url)}" alt="${escapeHtml(product.name)}">
+            <span class="pill">${escapeHtml(product.category)}</span>
+          </div>
+
+          <div class="product-info">
+            <h3>${escapeHtml(product.name)}</h3>
+            <p>${escapeHtml(product.description)}</p>
+
+            <div class="product-bottom">
+              <strong>${money(product.price)}</strong>
+
+              ${
+                quantity > 0
+                  ? `
+                    <div class="mini-qty">
+                      <button type="button" onclick="decreaseProduct('${safeId}')">−</button>
+                      <span>${quantity}</span>
+                      <button type="button" onclick="increaseProduct('${safeId}')">+</button>
+                    </div>
+                  `
+                  : `
+                    <button
+                      type="button"
+                      class="add-product-btn"
+                      onclick="addProductFromMenu('${safeId}')"
+                    >
+                      + Thêm
+                    </button>
+                  `
+              }
+            </div>
+          </div>
+        </article>
+      `;
+    }).join('');
+  }
+
+  async function loadMenuByCategory(category) {
+    const branchId = document.getElementById('branchIdInput').value;
+
+    currentCategory = category || '';
+
+    document.querySelectorAll('.category-tab').forEach(button => {
+      button.classList.toggle('active', button.dataset.category === currentCategory);
     });
 
-    return selectedItems;
+    setLoading(true);
+
+    try {
+      const res = await fetch(
+        `/api/customer/menu?branch_id=${encodeURIComponent(branchId)}&category=${encodeURIComponent(currentCategory)}`,
+        {
+          headers: {
+            Accept: 'application/json'
+          }
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Không thể tải danh sách món.');
+      }
+
+      currentMenu = Array.isArray(data.menu) ? data.menu : [];
+
+      renderMenu();
+    } catch (err) {
+      showToast(err.message || 'Không thể lọc danh mục. Vui lòng thử lại.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function addProductFromMenu(encodedId) {
+    const id = decodeURIComponent(encodedId);
+
+    const product = currentMenu
+      .map(normalizeProduct)
+      .find(item => String(item.id) === String(id));
+
+    if (!product) return;
+
+    addProduct(product);
+  }
+
+  function addProduct(product) {
+    const id = String(product.id);
+    const existing = selectedProducts.get(id);
+
+    if (existing) {
+      existing.quantity += 1;
+    } else {
+      selectedProducts.set(id, {
+        id,
+        name: product.name,
+        price: Number(product.price || 0),
+        quantity: 1
+      });
+    }
+
+    renderCart();
+    renderMenu();
+  }
+
+  function increaseProduct(encodedId) {
+    const id = decodeURIComponent(encodedId);
+    const product = selectedProducts.get(String(id));
+
+    if (!product) return;
+
+    product.quantity += 1;
+
+    renderCart();
+    renderMenu();
+  }
+
+  function decreaseProduct(encodedId) {
+    const id = decodeURIComponent(encodedId);
+    const product = selectedProducts.get(String(id));
+
+    if (!product) return;
+
+    product.quantity -= 1;
+
+    if (product.quantity <= 0) {
+      selectedProducts.delete(String(id));
+    }
+
+    renderCart();
+    renderMenu();
+  }
+
+  function removeProduct(encodedId) {
+    const id = decodeURIComponent(encodedId);
+
+    selectedProducts.delete(String(id));
+
+    renderCart();
+    renderMenu();
+  }
+
+  function getSelectedItems() {
+    return Array.from(selectedProducts.values()).map(product => ({
+      id: product.id,
+      name: product.name,
+      quantity: Number(product.quantity || 0),
+      price: Number(product.price || 0)
+    }));
+  }
+
+  function renderHiddenInputs() {
+    const hiddenInputs = document.getElementById('orderHiddenInputs');
+
+    hiddenInputs.innerHTML = getSelectedItems().map(item => `
+      <input type="hidden" name="menu_item_id" value="${escapeHtml(item.id)}">
+      <input type="hidden" name="quantity_${escapeHtml(item.id)}" value="${item.quantity}">
+    `).join('');
+  }
+
+  function renderCart() {
+    const cartItems = document.getElementById('cartItems');
+    const selectedItems = getSelectedItems();
+
+    if (!selectedItems.length) {
+      cartItems.className = 'customer-cart-items muted';
+      cartItems.innerHTML = 'Chưa chọn sản phẩm';
+    } else {
+      cartItems.className = 'customer-cart-items';
+
+      cartItems.innerHTML = selectedItems.map(item => {
+        const safeId = encodeURIComponent(item.id);
+
+        return `
+          <div class="customer-cart-line">
+            <div>
+              <b>${escapeHtml(item.name)}</b>
+              <span>${money(item.price)} x ${item.quantity}</span>
+            </div>
+
+            <div class="cart-line-actions">
+              <button type="button" onclick="decreaseProduct('${safeId}')">−</button>
+              <strong>${item.quantity}</strong>
+              <button type="button" onclick="increaseProduct('${safeId}')">+</button>
+              <button type="button" class="remove-btn" onclick="removeProduct('${safeId}')">×</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    renderHiddenInputs();
+    calc();
   }
 
   function calc() {
     let subtotal = 0;
-    const items = [];
 
-    const selectedItems = getSelectedItems();
-
-    selectedItems.forEach(item => {
+    getSelectedItems().forEach(item => {
       subtotal += item.price * item.quantity;
-      items.push(`${item.name} x ${item.quantity}`);
     });
 
     const usePointsInput = document.getElementById('usePoints');
@@ -245,19 +560,31 @@
     const discount = points * 500;
     const finalTotal = Math.max(0, subtotal - discount);
 
-    document.getElementById('cartItems').innerHTML = items.length
-      ? items.map(item => '<div>' + item + '</div>').join('')
-      : 'Chưa chọn sản phẩm';
-
     document.getElementById('subtotal').textContent = money(subtotal);
     document.getElementById('discount').textContent = money(discount);
     document.getElementById('finalTotal').textContent = money(finalTotal);
   }
 
-  document.querySelectorAll('.choose, .qty, #usePoints').forEach(element => {
-    element.addEventListener('input', calc);
-    element.addEventListener('change', calc);
+  document.getElementById('branchSelect').addEventListener('change', function () {
+    const branchId = this.value;
+
+    window.location.href = `/customer?branch_id=${encodeURIComponent(branchId)}`;
   });
+
+  document.querySelectorAll('.category-tab').forEach(button => {
+    button.addEventListener('click', function () {
+      loadMenuByCategory(this.dataset.category || '');
+    });
+  });
+
+  document.getElementById('productSearchInput').addEventListener('input', function () {
+    searchKeyword = this.value;
+
+    renderMenu();
+  });
+
+  document.getElementById('usePoints').addEventListener('input', calc);
+  document.getElementById('usePoints').addEventListener('change', calc);
 
   const orderForm = document.getElementById('orderForm');
 
@@ -282,7 +609,6 @@
     for (const item of selectedItems) {
       if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
         e.preventDefault();
-        item.quantityInput.classList.add('input-error');
         showToast('Số lượng sản phẩm phải lớn hơn 0.', 'error');
         return;
       }
@@ -348,7 +674,9 @@
     showToast(params.get('error'), 'error');
   }
 
-  calc();
+  renderMenu();
+  renderCart();
 </script>
+
 
 <%- include('partials/footer') %>
