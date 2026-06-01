@@ -4,7 +4,7 @@
   <div>
     <span class="eyebrow">POS</span>
     <h1>Tạo đơn tại quầy/chi nhánh</h1>
-    <p>Nhập mã khách hàng hoặc số điện thoại, chọn món nhanh và theo dõi tóm tắt đơn ngay bên cạnh.</p>
+    <p>Nhập số điện thoại khách hàng, chọn món nhanh và theo dõi tóm tắt đơn ngay bên cạnh.</p>
   </div>
 </section>
 
@@ -34,13 +34,13 @@
         <div class="card pos-customer-card">
           <h2>Thông tin đơn</h2>
 
-          <label>Mã khách hàng / Số điện thoại</label>
+          <label>Số điện thoại khách hàng</label>
 
           <div class="customer-lookup">
             <input
               type="text"
               id="customerCodeInput"
-              placeholder="Nhập mã KH hoặc số điện thoại"
+              placeholder="Nhập số điện thoại khách hàng"
               autocomplete="off"
             >
 
@@ -266,18 +266,23 @@
 
   async function findCustomerByCode() {
     const codeInput = document.getElementById('customerCodeInput');
-    const code = codeInput.value.trim();
+    const phone = codeInput.value.trim();
 
     codeInput.classList.remove('input-error');
 
-    if (!code) {
+    if (!phone) {
       resetCustomer();
-      showToast('Nếu là khách lẻ thì có thể bỏ trống mã khách hàng.', 'success');
+      showToast('Nếu là khách lẻ thì có thể bỏ trống số điện thoại khách hàng.', 'success');
       return;
     }
 
     try {
-      const res = await fetch(`/customers/lookup?code=${encodeURIComponent(code)}`);
+      const res = await fetch(`/api/customers/lookup?phone=${encodeURIComponent(phone)}`, {
+        headers: {
+          Accept: 'application/json'
+        }
+      });
+
       const data = await res.json();
 
       if (!res.ok || !data.customer) {
@@ -307,6 +312,7 @@
       showToast('Đã tìm thấy khách hàng.', 'success');
       calcTotal();
     } catch (err) {
+      console.error(err);
       showToast('Không thể kiểm tra khách hàng. Vui lòng thử lại.', 'error');
     }
   }
