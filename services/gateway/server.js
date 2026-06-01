@@ -485,10 +485,20 @@ app.post('/orders/:id/pay', requireLogin, async (req, res) => {
   res.redirect('/orders/' + req.params.id);
 });
 
-app.post('/orders/:id/cancel', requireLogin, staffOnly, async (req, res) => {
-  await api(req, 'order', 'post', `/orders/${req.params.id}/cancel`, req.body);
+app.post('/orders/:id/cancel', requireLogin, staffOnly, staffRoleOnly, async (req, res) => {
+  try {
+    await api(req, 'order', 'post', `/orders/${req.params.id}/cancel`, {});
 
-  res.redirect('/orders/' + req.params.id);
+    res.redirect('/orders/' + req.params.id + '?success=' + encodeURIComponent('Đã hủy đơn hàng thành công.'));
+  } catch (e) {
+    console.error('[GATEWAY CANCEL ORDER ERROR]', e.response?.data || e.message);
+
+    res.redirect('/orders/' + req.params.id + '?error=' + encodeURIComponent(
+      e.response?.data?.detail ||
+      e.response?.data?.message ||
+      'Không thể hủy đơn hàng.'
+    ));
+  }
 });
 
 app.get('/customers', requireLogin, staffOnly, async (req, res) => {

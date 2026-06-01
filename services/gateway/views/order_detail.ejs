@@ -13,22 +13,66 @@
   <button type="button" onclick="closeToast()">×</button>
 </div>
 
-<div class="card">
-  <p>
-    <b>Chi nhánh:</b>
-    <%= order.branch_name || '-' %>
-  </p>
+<div class="card order-detail-card">
+  <div class="order-detail-header">
+    <div>
+      <h2>Thông tin đơn hàng</h2>
+      <p class="muted">Kiểm tra thông tin khách hàng, trạng thái và số tiền cần thanh toán.</p>
+    </div>
 
-  <p>
-    <b>Khách:</b>
-    <%= order.customer_name || 'Khách lẻ' %>
-    <%= order.customer_phone ? ' - ' + order.customer_phone : '' %>
-  </p>
+    <div>
+      <% if (order.status === 'PAID') { %>
+        <span class="badge success-badge">Đã thanh toán</span>
+      <% } else if (order.status === 'CANCELLED') { %>
+        <span class="badge danger-badge">Đã hủy</span>
+      <% } else { %>
+        <span class="badge warning-badge">Chờ thanh toán</span>
+      <% } %>
+    </div>
+  </div>
 
-  <p>
-    <b>Địa chỉ nhận:</b>
-    <%= order.delivery_address || 'Không có' %>
-  </p>
+  <div class="order-info-grid">
+    <p>
+      <b>Chi nhánh:</b>
+      <%= order.branch_name || '-' %>
+    </p>
+
+    <p>
+      <b>Khách:</b>
+      <%= order.customer_name || 'Khách lẻ' %>
+      <%= order.customer_phone ? ' - ' + order.customer_phone : '' %>
+    </p>
+
+    <p>
+      <b>Địa chỉ nhận:</b>
+      <%= order.delivery_address || 'Không có' %>
+    </p>
+
+    <p>
+      <b>Thời gian tạo:</b>
+      <%= new Date(order.created_at).toLocaleString('vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        hour12: false
+      }) %>
+    </p>
+
+    <% if (order.paid_at) { %>
+      <p>
+        <b>Thời gian thanh toán:</b>
+        <%= new Date(order.paid_at).toLocaleString('vi-VN', {
+          timeZone: 'Asia/Ho_Chi_Minh',
+          hour12: false
+        }) %>
+      </p>
+    <% } %>
+
+    <% if (order.payment) { %>
+      <p>
+        <b>Phương thức thanh toán:</b>
+        <%= order.payment.method || '-' %>
+      </p>
+    <% } %>
+  </div>
 
   <% if (order.note) { %>
     <div class="kitchen-note">
@@ -37,102 +81,99 @@
     </div>
   <% } %>
 
-  <p>
-    <b>Thời gian tạo:</b>
-    <%= new Date(order.created_at).toLocaleString('vi-VN', {
-      timeZone: 'Asia/Ho_Chi_Minh',
-      hour12: false
-    }) %>
-  </p>
+  <hr>
 
-  <p>
-    <b>Trạng thái:</b>
-
-    <% if (order.status === 'PAID') { %>
-      <span class="badge success-badge">Đã thanh toán</span>
-    <% } else if (order.status === 'CANCELLED') { %>
-      <span class="badge danger-badge">Đã hủy</span>
-    <% } else { %>
-      <span class="badge warning-badge">Chờ thanh toán</span>
-    <% } %>
-  </p>
-
-  <p>
-    <b>Tạm tính:</b>
-    <%= Number(order.total_amount || 0).toLocaleString('vi-VN') %>đ
-  </p>
-
-  <p>
-    <b>Dùng điểm:</b>
-    <%= order.points_used || 0 %> điểm -
-    giảm <%= Number(order.discount_amount || 0).toLocaleString('vi-VN') %>đ
-  </p>
-
-  <p>
-    <b>Cần thanh toán:</b>
-    <b><%= Number(order.final_amount || order.total_amount || 0).toLocaleString('vi-VN') %>đ</b>
-  </p>
-
-  <% if (order.status === 'PENDING') { %>
+  <div class="order-money-grid">
     <p>
-      <b>Điểm sẽ cộng sau thanh toán:</b>
-      <%= order.earned_points_if_paid || 0 %> điểm
+      <span>Tạm tính</span>
+      <b><%= Number(order.total_amount || 0).toLocaleString('vi-VN') %>đ</b>
     </p>
-  <% } %>
+
+    <p>
+      <span>Dùng điểm</span>
+      <b>
+        <%= order.points_used || 0 %> điểm -
+        giảm <%= Number(order.discount_amount || 0).toLocaleString('vi-VN') %>đ
+      </b>
+    </p>
+
+    <p class="final-money">
+      <span>Cần thanh toán</span>
+      <b><%= Number(order.final_amount || order.total_amount || 0).toLocaleString('vi-VN') %>đ</b>
+    </p>
+
+    <% if (order.status === 'PENDING') { %>
+      <p>
+        <span>Điểm sẽ cộng sau thanh toán</span>
+        <b><%= order.earned_points_if_paid || 0 %> điểm</b>
+      </p>
+    <% } %>
+  </div>
 </div>
 
 <% if (order.items && order.items.length) { %>
-  <table>
-    <tr>
-      <th>Sản phẩm</th>
-      <th>SL</th>
-      <th>Đơn giá</th>
-      <th>Thành tiền</th>
-    </tr>
+  <div class="card">
+    <h2>Danh sách sản phẩm</h2>
 
-    <% order.items.forEach(i => { %>
+    <table>
       <tr>
-        <td><%= i.item_name %></td>
-        <td><span class="badge"><%= i.quantity %></span></td>
-        <td><%= Number(i.unit_price || 0).toLocaleString('vi-VN') %>đ</td>
-        <td><b><%= Number(i.line_total || 0).toLocaleString('vi-VN') %>đ</b></td>
+        <th>Sản phẩm</th>
+        <th>SL</th>
+        <th>Đơn giá</th>
+        <th>Thành tiền</th>
       </tr>
-    <% }) %>
-  </table>
+
+      <% order.items.forEach(i => { %>
+        <tr>
+          <td><%= i.item_name %></td>
+          <td><span class="badge"><%= i.quantity %></span></td>
+          <td><%= Number(i.unit_price || 0).toLocaleString('vi-VN') %>đ</td>
+          <td><b><%= Number(i.line_total || 0).toLocaleString('vi-VN') %>đ</b></td>
+        </tr>
+      <% }) %>
+    </table>
+  </div>
 <% } %>
 
 <% if (order.status === 'PENDING' && user.role === 'staff') { %>
   <div class="card order-actions-card">
-    <form
-      method="post"
-      action="/orders/<%= order.id %>/pay"
-      class="form-inline"
-      id="payOrderForm"
-    >
-      <select name="method" id="paymentMethod" required>
-        <option value="">-- Chọn phương thức thanh toán --</option>
-        <option value="BANKING">BANKING</option>
-        <option value="MOMO">MOMO</option>
-        <option value="VNPAY">VNPAY</option>
-        <option value="CASH">CASH</option>
-        <option value="CARD">CARD</option>
-      </select>
+    <div>
+      <h2>Xử lý đơn hàng</h2>
+      <p class="muted">Nhân viên có thể xác nhận thanh toán hoặc hủy đơn đang chờ.</p>
+    </div>
 
-      <button type="submit" class="primary">
-        Xác nhận thanh toán & cộng điểm
-      </button>
-    </form>
+    <div class="order-actions-row">
+      <form
+        method="post"
+        action="/orders/<%= order.id %>/pay"
+        class="form-inline"
+        id="payOrderForm"
+      >
+        <select name="method" id="paymentMethod" required>
+          <option value="">-- Chọn phương thức thanh toán --</option>
+          <option value="BANKING">BANKING</option>
+          <option value="MOMO">MOMO</option>
+          <option value="VNPAY">VNPAY</option>
+          <option value="CASH">CASH</option>
+          <option value="CARD">CARD</option>
+        </select>
 
-    <form
-      method="post"
-      action="/orders/<%= order.id %>/cancel"
-      id="cancelOrderForm"
-      class="form-inline cancel-form"
-    >
-      <button type="submit" class="danger">
-        Hủy đơn hàng
-      </button>
-    </form>
+        <button type="submit" class="primary">
+          Xác nhận thanh toán & cộng điểm
+        </button>
+      </form>
+
+      <form
+        method="post"
+        action="/orders/<%= order.id %>/cancel"
+        id="cancelOrderForm"
+        class="form-inline cancel-form"
+      >
+        <button type="submit" class="danger">
+          Hủy đơn hàng
+        </button>
+      </form>
+    </div>
   </div>
 <% } else if (order.status === 'PAID') { %>
   <div class="success">
@@ -211,5 +252,142 @@
     showToast(params.get('error'), 'error');
   }
 </script>
+
+<style>
+  .order-detail-card h2,
+  .order-actions-card h2 {
+    margin-top: 0;
+    margin-bottom: 6px;
+  }
+
+  .order-detail-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+
+  .order-detail-header p {
+    margin: 0;
+  }
+
+  .order-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 18px;
+  }
+
+  .order-info-grid p {
+    margin: 6px 0;
+  }
+
+  .order-money-grid {
+    display: grid;
+    gap: 8px;
+  }
+
+  .order-money-grid p {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0;
+  }
+
+  .final-money {
+    padding-top: 10px;
+    border-top: 1px dashed #d1d5db;
+    font-size: 18px;
+  }
+
+  .order-actions-card {
+    display: grid;
+    gap: 12px;
+  }
+
+  .order-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .order-actions-row .form-inline {
+    margin: 0;
+  }
+
+  .cancel-form {
+    margin-left: auto;
+  }
+
+  .danger {
+    border: none;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    background: #dc2626;
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .danger:hover {
+    background: #b91c1c;
+  }
+
+  .danger-badge {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .success-badge {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .warning-badge {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .kitchen-note {
+    margin: 12px 0;
+    padding: 10px 12px;
+    border: 1px dashed #111;
+    border-radius: 8px;
+    background: #fff8dc;
+  }
+
+  .kitchen-note p {
+    margin: 6px 0 0;
+    font-weight: 600;
+    white-space: pre-line;
+  }
+
+  @media (max-width: 720px) {
+    .order-detail-header {
+      display: block;
+    }
+
+    .order-info-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .order-money-grid p {
+      display: block;
+    }
+
+    .order-actions-row {
+      display: block;
+    }
+
+    .order-actions-row .form-inline {
+      margin-bottom: 12px;
+    }
+
+    .cancel-form {
+      margin-left: 0;
+    }
+  }
+</style>
 
 <%- include('partials/footer') %>

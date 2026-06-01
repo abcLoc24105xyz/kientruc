@@ -14,6 +14,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
 let redis;
@@ -59,6 +60,18 @@ function toNonNegativeInteger(value) {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
+function isStaffUser(req) {
+  return req.user && (req.user.role === 'staff' || req.user.type === 'staff');
+}
+
+function isCustomerUser(req) {
+  return req.user && (req.user.role === 'customer' || req.user.type === 'customer');
+}
+
+function isAdminUser(req) {
+  return req.user && req.user.role === 'admin';
+}
+
 function isValidDate(value) {
   if (!value) return true;
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(value).getTime());
@@ -67,6 +80,27 @@ function isValidDate(value) {
 function isValidMonth(value) {
   if (!value) return true;
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+function normalizeOrderItems(body) {
+  if (Array.isArray(body.items)) {
+    return body.items;
+  }
+
+  const rawMenuItemIds = body.menu_item_id;
+
+  if (!rawMenuItemIds) {
+    return [];
+  }
+
+  const menuItemIds = Array.isArray(rawMenuItemIds)
+    ? rawMenuItemIds
+    : [rawMenuItemIds];
+
+  return menuItemIds.map((menuItemId) => ({
+    menu_item_id: toPositiveInteger(menuItemId),
+    quantity: toPositiveInteger(body[`quantity_${menuItemId}`])
+  }));
 }
 
 function sendValidationError(res, errors) {
@@ -129,10 +163,10 @@ function validateCreateOrderPayload(body, req) {
    */
   let channel;
 
-  if (req.user.role === 'customer') {
+  if (isCustomerUser(req)) {
     customer_id = req.user.customerId;
     channel = 'WEB';
-  } else if (req.user.role === 'staff') {
+  } else if (isStaffUser(req)) {
     branch_id = req.user.branchId;
     channel = 'POS';
   } else {
@@ -141,8 +175,7 @@ function validateCreateOrderPayload(body, req) {
 
   const note = cleanString(body.note);
   const delivery_address = cleanString(body.delivery_address);
-
-  const items = Array.isArray(body.items) ? body.items : [];
+  const items = normalizeOrderItems(body);
 
   const use_points =
     body.use_points == null || body.use_points === ''
@@ -174,10 +207,6 @@ function validateCreateOrderPayload(body, req) {
 
   if (delivery_address.length > 255) {
     errors.push('Địa chỉ giao hàng không được vượt quá 255 ký tự');
-  }
-
-  if (!Array.isArray(body.items)) {
-    errors.push('Danh sách sản phẩm phải là mảng');
   }
 
   if (!items.length) {
@@ -293,7 +322,8 @@ app.get('/pos/customers', authRequired, asyncHandler(async (req, res) => {
       phone,
       email,
       points,
-      rank,
+      tier,
+      tier AS rank,
       status,
       created_at,
       updated_at
@@ -306,6 +336,57 @@ app.get('/pos/customers', authRequired, asyncHandler(async (req, res) => {
   );
 
   res.json(rows);
+}));
+
+/* =========================
+   CUSTOMER LOOKUP FOR POS
+========================= */
+
+app.get('/customers/lookup', authRequired, asyncHandler(async (req, res) => {
+  const code = cleanString(req.query.code || req.query.phone);
+
+  if (!code) {
+    return res.status(400).json({
+      message: 'Vui lòng nhập mã khách hàng hoặc số điện thoại'
+    });
+  }
+
+  const normalizedCode = code.replace(/^#/, '').trim();
+  const phoneDigits = normalizedCode.replace(/\D/g, '');
+
+  const customer = (
+    await pool.query(
+      `
+      SELECT
+        id,
+        name,
+        phone,
+        email,
+        points,
+        tier,
+        status
+      FROM customers
+      WHERE COALESCE(status, 'ACTIVE') <> 'DELETED'
+        AND (
+          id::text = $1
+          OR phone = $1
+          OR regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $2
+        )
+      LIMIT 1
+      `,
+      [normalizedCode, phoneDigits]
+    )
+  ).rows[0];
+
+  if (!customer) {
+    return res.status(404).json({
+      message: 'Không tìm thấy khách hàng'
+    });
+  }
+
+  return res.json({
+    customer
+  });
 }));
 
 /* =========================
@@ -329,10 +410,10 @@ app.get('/orders', authRequired, asyncHandler(async (req, res) => {
   const params = [];
   let where = 'WHERE 1=1';
 
-  if (req.user.role === 'customer') {
+  if (isCustomerUser(req)) {
     params.push(req.user.customerId);
     where += ` AND o.customer_id = $${params.length}`;
-  } else if (req.user.role !== 'admin') {
+  } else if (!isAdminUser(req)) {
     params.push(req.user.branchId);
     where += ` AND o.branch_id = $${params.length}`;
   }
@@ -415,7 +496,7 @@ app.get('/orders/:id', authRequired, asyncHandler(async (req, res) => {
   }
 
   if (
-    req.user.role === 'customer' &&
+    isCustomerUser(req) &&
     Number(order.customer_id) !== Number(req.user.customerId)
   ) {
     return res.status(403).json({
@@ -424,8 +505,8 @@ app.get('/orders/:id', authRequired, asyncHandler(async (req, res) => {
   }
 
   if (
-    req.user.type === 'staff' &&
-    req.user.role !== 'admin' &&
+    isStaffUser(req) &&
+    !isAdminUser(req) &&
     Number(order.branch_id) !== Number(req.user.branchId)
   ) {
     return res.status(403).json({
@@ -494,7 +575,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
     use_points
   } = validation.data;
 
-  if (req.user.type === 'staff' && !managerBranchGuard(req, branch_id)) {
+  if (isStaffUser(req) && !managerBranchGuard(req, branch_id)) {
     return res.status(403).json({
       message: 'Không được tạo đơn ở chi nhánh khác'
     });
@@ -511,7 +592,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
         SELECT id
         FROM branches
         WHERE id = $1
-          AND status <> 'DELETED'
+          AND COALESCE(status, 'ACTIVE') <> 'DELETED'
         `,
         [branch_id]
       )
@@ -531,7 +612,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
           SELECT id
           FROM customers
           WHERE id = $1
-            AND status <> 'DELETED'
+            AND COALESCE(status, 'ACTIVE') <> 'DELETED'
           `,
           [customer_id]
         )
@@ -659,7 +740,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
       [
         branch_id,
         customer_id || null,
-        req.user.type === 'staff' ? req.user.id : null,
+        isStaffUser(req) ? req.user.id : null,
         channel,
         total,
         discount,
@@ -779,7 +860,7 @@ app.post('/orders/:id/pay', authRequired, asyncHandler(async (req, res) => {
     }
 
     if (
-      req.user.role === 'customer' &&
+      isCustomerUser(req) &&
       Number(order.customer_id) !== Number(req.user.customerId)
     ) {
       await client.query('ROLLBACK');
@@ -788,7 +869,7 @@ app.post('/orders/:id/pay', authRequired, asyncHandler(async (req, res) => {
       });
     }
 
-    if (req.user.type === 'staff' && !managerBranchGuard(req, order.branch_id)) {
+    if (isStaffUser(req) && !managerBranchGuard(req, order.branch_id)) {
       await client.query('ROLLBACK');
       return res.status(403).json({
         message: 'Không được thanh toán đơn chi nhánh khác'
@@ -884,50 +965,6 @@ app.post('/orders/:id/pay', authRequired, asyncHandler(async (req, res) => {
 }));
 
 /* =========================
-   ERROR HANDLER
-========================= */
-
-app.use((err, req, res, next) => {
-  console.error(err);
-
-  let code = 500;
-  let message = 'Order service error';
-
-  if (err.code === '23503') {
-    code = 400;
-    message = 'Dữ liệu tham chiếu không hợp lệ';
-  }
-
-  if (err.code === '23505') {
-    code = 409;
-    message = 'Dữ liệu đã tồn tại';
-  }
-
-  if (err.code === '23514') {
-    code = 400;
-
-    if (err.constraint === 'orders_channel_check') {
-      message = 'Kênh bán hàng không hợp lệ. Chỉ được dùng POS, WEB hoặc MOBILE';
-    } else if (err.constraint === 'revenue_events_channel_check') {
-      message = 'Kênh doanh thu không hợp lệ. Chỉ được dùng POS, WEB hoặc MOBILE';
-    } else {
-      message = 'Dữ liệu vi phạm ràng buộc kiểm tra của database';
-    }
-  }
-
-  res.status(code).json({
-    message,
-    detail: err.message
-  });
-});
-
-const PORT = process.env.PORT || process.env.ORDER_PORT || 4004;
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`order-service running on port ${PORT}`);
-});
-
-/* =========================
    CANCEL ORDER
 ========================= */
 
@@ -994,7 +1031,9 @@ app.post('/orders/:id/cancel', authRequired, asyncHandler(async (req, res) => {
       });
     }
 
-    if (Number(order.points_used || 0) > 0 && order.customer_id) {
+    const pointsUsed = Number(order.points_used || 0);
+
+    if (pointsUsed > 0 && order.customer_id) {
       await client.query(
         `
         UPDATE customers
@@ -1002,7 +1041,7 @@ app.post('/orders/:id/cancel', authRequired, asyncHandler(async (req, res) => {
             updated_at = NOW()
         WHERE id = $2
         `,
-        [order.points_used, order.customer_id]
+        [pointsUsed, order.customer_id]
       );
 
       await client.query(
@@ -1024,28 +1063,30 @@ app.post('/orders/:id/cancel', authRequired, asyncHandler(async (req, res) => {
           order.customer_id,
           order.branch_id,
           order.id,
-          order.points_used,
-          `Hoàn lại ${order.points_used} điểm do hủy đơn #${order.id}`
+          pointsUsed,
+          `Hoàn lại ${pointsUsed} điểm do hủy đơn #${order.id}`
         ]
       );
     }
 
-    const updated = await client.query(
-      `
-      UPDATE orders
-      SET status = 'CANCELLED',
-          updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-      `,
-      [orderId]
-    );
+    const updated = (
+      await client.query(
+        `
+        UPDATE orders
+        SET status = 'CANCELLED',
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+        `,
+        [orderId]
+      )
+    ).rows[0];
 
     await client.query('COMMIT');
 
     res.json({
       message: 'Đã hủy đơn hàng thành công',
-      order: updated.rows[0]
+      order: updated
     });
   } catch (e) {
     await client.query('ROLLBACK');
@@ -1054,3 +1095,52 @@ app.post('/orders/:id/cancel', authRequired, asyncHandler(async (req, res) => {
     client.release();
   }
 }));
+
+/* =========================
+   ERROR HANDLER
+========================= */
+
+app.use((err, req, res, next) => {
+  console.error('[ORDER SERVICE ERROR]', {
+    message: err.message,
+    code: err.code,
+    constraint: err.constraint,
+    stack: err.stack
+  });
+
+  let code = 500;
+  let message = 'Order service error';
+
+  if (err.code === '23503') {
+    code = 400;
+    message = 'Dữ liệu tham chiếu không hợp lệ';
+  }
+
+  if (err.code === '23505') {
+    code = 409;
+    message = 'Dữ liệu đã tồn tại';
+  }
+
+  if (err.code === '23514') {
+    code = 400;
+
+    if (err.constraint === 'orders_channel_check') {
+      message = 'Kênh bán hàng không hợp lệ. Chỉ được dùng POS, WEB hoặc MOBILE';
+    } else if (err.constraint === 'revenue_events_channel_check') {
+      message = 'Kênh doanh thu không hợp lệ. Chỉ được dùng POS, WEB hoặc MOBILE';
+    } else {
+      message = 'Dữ liệu vi phạm ràng buộc kiểm tra của database';
+    }
+  }
+
+  res.status(code).json({
+    message,
+    detail: err.message
+  });
+});
+
+const PORT = process.env.PORT || process.env.ORDER_PORT || 4004;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`order-service running on port ${PORT}`);
+});
