@@ -9,6 +9,13 @@
 
 <body class="invoice-body">
   <main class="invoice">
+    <div class="invoice-watermark">MỘC COFFEE</div>
+
+    <div class="invoice-brand">
+      <h2>MỘC COFFEE</h2>
+      <p>Chúc bạn có một ngày tốt lành!</p>
+    </div>
+
     <h1>HÓA ĐƠN THANH TOÁN</h1>
 
     <p class="center">
@@ -39,7 +46,14 @@
     <p><b>Số điện thoại:</b> <%= order.customer_phone || '' %></p>
     <p><b>Email:</b> <%= order.customer_email || '' %></p>
     <p><b>Địa chỉ giao hàng:</b> <%= order.delivery_address || '' %></p>
-    <p><b>Ghi chú:</b> <%= order.note || '' %></p>
+
+    <% if (order.note) { %>
+      <div class="kitchen-note">
+        <b>Ghi chú cho bếp:</b>
+        <p><%= order.note %></p>
+      </div>
+    <% } %>
+
     <table class="receipt-table">
       <tr>
         <th>Tên hàng</th>

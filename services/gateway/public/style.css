@@ -1155,3 +1155,58 @@ th {
     gap: 6px;
   }
 }
+.invoice {
+  position: relative;
+  overflow: hidden;
+}
+
+.invoice-brand {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.invoice-brand h2 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: 1px;
+  font-weight: 900;
+}
+
+.invoice-brand p {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  color: #666;
+}
+
+.invoice-watermark {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-28deg);
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: rgba(0, 0, 0, 0.05);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.invoice > *:not(.invoice-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.kitchen-note {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px dashed #111;
+  border-radius: 8px;
+  background: #fff8dc;
+}
+
+.kitchen-note p {
+  margin: 6px 0 0;
+  font-weight: 600;
+  white-space: pre-line;
+}
