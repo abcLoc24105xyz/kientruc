@@ -386,33 +386,42 @@ app.get('/orders/new', requireLogin, staffOnly, staffRoleOnly, async (req, res) 
 
 /* =========================
    POS CUSTOMER LOOKUP API
-   This route is added for /orders/new only.
-   Keep /customers/lookup below unchanged because it renders the customer page.
+   Dùng cho trang /orders/new.
+   Không sửa route /customers/lookup cũ vì route đó render trang quản lý khách hàng.
+   API này tìm khách theo số điện thoại trong bảng customers thông qua loyalty-service.
 ========================= */
-app.get('/api/customers/lookup', requireLogin, staffOnly, async (req, res) => {
+app.get('/api/customers/lookup', requireLogin, staffOnly, staffRoleOnly, async (req, res) => {
   try {
-    const code = String(req.query.code || '').trim();
+    const phone = String(req.query.phone || req.query.code || '').trim();
 
-    if (!code) {
+    if (!phone) {
       return res.status(400).json({
-        message: 'Vui lòng nhập mã khách hàng hoặc số điện thoại'
+        message: 'Vui lòng nhập số điện thoại khách hàng'
       });
     }
 
-    const result = await api(
+    const customer = await api(
       req,
-      'order',
+      'loyalty',
       'get',
-      '/customers/lookup' + qs({ code })
+      '/lookup' + qs({ q: phone })
     );
 
-    return res.json(result);
+    if (!customer) {
+      return res.status(404).json({
+        message: 'Không tìm thấy khách hàng'
+      });
+    }
+
+    return res.json({
+      customer
+    });
   } catch (e) {
     return res.status(e.response?.status || 500).json({
       message:
         e.response?.data?.message ||
         e.response?.data?.detail ||
-        'Không thể kiểm tra khách hàng'
+        'Không thể kiểm tra thông tin khách hàng'
     });
   }
 });
