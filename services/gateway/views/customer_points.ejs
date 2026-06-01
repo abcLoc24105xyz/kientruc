@@ -4,7 +4,7 @@
   <div>
     <span class="eyebrow">Loyalty</span>
     <h1>Điểm khách hàng</h1>
-    <p>Xem điểm tích lũy, giá trị quy đổi và thông tin xét hạng RFM.</p>
+    <p>Theo dõi điểm tích lũy, hạng thành viên và lịch sử cộng/trừ điểm.</p>
   </div>
 </section>
 
@@ -13,129 +13,140 @@
   <button type="button" onclick="closeToast()">×</button>
 </div>
 
-<div class="card point-big">
-  <h2><%= customer.name %></h2>
+<section class="points-summary-grid">
+  <div class="card point-summary-card main-point-card">
+    <span class="muted">Khách hàng</span>
+    <h2><%= customer.name %></h2>
 
-  <p>
-    Điểm hiện có:
-    <b><%= customer.points || 0 %></b>
-  </p>
-
-  <p>
-    Giá trị quy đổi:
-    <b><%= Number((customer.points || 0) * 500).toLocaleString('vi-VN') %>đ</b>
-  </p>
-
-  <p>
-    Hạng hiện tại:
-    <span class="badge"><%= customer.tier || 'MEMBER' %></span>
-  </p>
-
-  <% if (customer.last_rank_evaluated_at) { %>
-    <p>
-      RFM tháng 05/2026:
-      R=<b><%= customer.r_score || 0 %></b>,
-      F=<b><%= customer.f_score || 0 %></b>,
-      M=<b><%= customer.m_score || 0 %></b>,
-      score=<b><%= customer.rfm_score || 0 %></b>,
-      hạng RFM=<b><%= customer.rfm_rank || 'Chưa có' %></b>
-    </p>
+    <div class="point-number">
+      <%= Number(customer.points || 0).toLocaleString('vi-VN') %>
+      <small>điểm</small>
+    </div>
 
     <p>
-      Tổng chi 6 tháng:
-      <b><%= Number(customer.spending_6m || 0).toLocaleString('vi-VN') %>đ</b>,
-      hạng chi tiêu:
-      <b><%= customer.spending_rank || 'Chưa có' %></b>
-    </p>
-
-    <p>
-      Lần xét hạng gần nhất:
-      <%= new Date(customer.last_rank_evaluated_at).toLocaleString('vi-VN', {
-        timeZone: 'Asia/Ho_Chi_Minh',
-        hour12: false
-      }) %>
-    </p>
-  <% } else { %>
-    <p class="muted">Khách hàng chưa được xét hạng theo RFM.</p>
-  <% } %>
-
-  <p>
-    Quy đổi: <b>1 điểm = 500đ</b> giảm giá.
-    Tích điểm: <b>10.000đ thanh toán = 1 điểm</b>.
-    Hạng khách hàng được xét riêng bằng RFM, không tính trực tiếp từ điểm tích lũy.
-  </p>
-</div>
-
-<h2>Lịch sử điểm/giao dịch</h2>
-
-<% if (!history || history.length === 0) { %>
-  <div class="card empty-state">
-    <h2>Chưa có lịch sử điểm</h2>
-    <p class="muted">
-      Sau khi thanh toán đơn hàng, lịch sử cộng điểm hoặc dùng điểm sẽ hiển thị tại đây.
+      Quy đổi được
+      <b><%= Number((customer.points || 0) * 500).toLocaleString('vi-VN') %>đ</b>
     </p>
   </div>
-<% } else { %>
-  <table>
-    <tr>
-      <th>Thời gian</th>
-      <th>Chi nhánh</th>
-      <th>Đơn</th>
-      <th>Giá trị</th>
-      <th>Cộng</th>
-      <th>Dùng</th>
-      <th>Giảm</th>
-      <th>Mô tả</th>
-    </tr>
 
-    <% history.forEach(h => { %>
-      <tr>
-        <td>
-          <%= new Date(h.purchase_date).toLocaleString('vi-VN', {
-            timeZone: 'Asia/Ho_Chi_Minh',
-            hour12: false
-          }) %>
-        </td>
+  <div class="card point-summary-card">
+    <span class="muted">Hạng hiện tại</span>
+    <h2>
+      <span class="badge tier-badge"><%= customer.tier || 'MEMBER' %></span>
+    </h2>
 
-        <td><%= h.branch_name || '-' %></td>
+    <p class="muted">
+      Hạng thành viên được xét dựa trên lịch sử mua hàng và mức chi tiêu.
+    </p>
+  </div>
 
-        <td>
-          <% if (h.order_id) { %>
-            <a href="/orders/<%= h.order_id %>">#<%= h.order_id %></a>
-          <% } else { %>
-            <span class="muted">-</span>
-          <% } %>
-        </td>
+  <div class="card point-summary-card">
+    <span class="muted">Quy đổi điểm</span>
+    <h2>1 điểm = 500đ</h2>
 
-        <td>
-          <%= Number(h.amount || 0).toLocaleString('vi-VN') %>đ
-        </td>
+    <p class="muted">
+      Khi đặt hàng, bạn có thể dùng điểm để giảm giá trực tiếp cho đơn hàng.
+    </p>
+  </div>
+</section>
 
-        <td>
-          <% if (Number(h.points_added || 0) > 0) { %>
-            <span class="badge">+<%= h.points_added %></span>
-          <% } else { %>
-            <span class="muted">0</span>
-          <% } %>
-        </td>
+<section class="card point-rule-card">
+  <h2>Cách tích và dùng điểm</h2>
 
-        <td>
-          <% if (Number(h.points_used || 0) > 0) { %>
-            <span class="badge">-<%= h.points_used %></span>
-          <% } else { %>
-            <span class="muted">0</span>
-          <% } %>
-        </td>
+  <div class="point-rule-list">
+    <div>
+      <b>Tích điểm</b>
+      <span>10.000đ thanh toán = 1 điểm</span>
+    </div>
 
-        <td>
-          <%= Number(h.discount_amount || 0).toLocaleString('vi-VN') %>đ
-        </td>
+    <div>
+      <b>Dùng điểm</b>
+      <span>1 điểm giảm 500đ</span>
+    </div>
 
-        <td><%= h.description || '-' %></td>
-      </tr>
-    <% }) %>
-  </table>
-<% } %>
+    <div>
+      <b>Lịch sử</b>
+      <span>Mỗi lần cộng hoặc dùng điểm đều được lưu lại bên dưới.</span>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-title-row">
+    <div>
+      <h2>Lịch sử điểm</h2>
+      <p class="muted">Các giao dịch cộng điểm, dùng điểm hoặc hoàn điểm của bạn.</p>
+    </div>
+  </div>
+
+  <% if (!history || history.length === 0) { %>
+    <div class="empty-state">
+      <h2>Chưa có lịch sử điểm</h2>
+      <p class="muted">
+        Sau khi thanh toán đơn hàng, lịch sử cộng điểm hoặc dùng điểm sẽ hiển thị tại đây.
+      </p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>Thời gian</th>
+          <th>Đơn hàng</th>
+          <th>Giá trị</th>
+          <th>Cộng điểm</th>
+          <th>Dùng điểm</th>
+          <th>Giảm giá</th>
+          <th>Mô tả</th>
+        </tr>
+
+        <% history.forEach(h => { %>
+          <tr>
+            <td>
+              <%= new Date(h.purchase_date).toLocaleString('vi-VN', {
+                timeZone: 'Asia/Ho_Chi_Minh',
+                hour12: false
+              }) %>
+            </td>
+
+            <td>
+              <% if (h.order_id) { %>
+                <a href="/orders/<%= h.order_id %>">#<%= h.order_id %></a>
+              <% } else { %>
+                <span class="muted">-</span>
+              <% } %>
+            </td>
+
+            <td>
+              <%= Number(h.amount || 0).toLocaleString('vi-VN') %>đ
+            </td>
+
+            <td>
+              <% if (Number(h.points_added || 0) > 0) { %>
+                <span class="badge point-plus">+<%= h.points_added %></span>
+              <% } else { %>
+                <span class="muted">0</span>
+              <% } %>
+            </td>
+
+            <td>
+              <% if (Number(h.points_used || 0) > 0) { %>
+                <span class="badge point-minus">-<%= h.points_used %></span>
+              <% } else { %>
+                <span class="muted">0</span>
+              <% } %>
+            </td>
+
+            <td>
+              <%= Number(h.discount_amount || 0).toLocaleString('vi-VN') %>đ
+            </td>
+
+            <td><%= h.description || '-' %></td>
+          </tr>
+        <% }) %>
+      </table>
+    </div>
+  <% } %>
+</section>
 
 <script>
   const toast = document.getElementById('toast');
@@ -164,5 +175,118 @@
     showToast(params.get('error'), 'error');
   }
 </script>
+
+<style>
+  .points-summary-grid {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .point-summary-card {
+    display: grid;
+    gap: 8px;
+    min-height: 150px;
+  }
+
+  .point-summary-card h2 {
+    margin: 0;
+  }
+
+  .point-summary-card p {
+    margin: 0;
+  }
+
+  .main-point-card {
+    background: linear-gradient(135deg, #fff7ed, #ffffff);
+  }
+
+  .point-number {
+    font-size: 42px;
+    line-height: 1;
+    font-weight: 900;
+  }
+
+  .point-number small {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .tier-badge {
+    font-size: 16px;
+    padding: 8px 12px;
+  }
+
+  .point-rule-card {
+    margin-bottom: 16px;
+  }
+
+  .point-rule-card h2 {
+    margin-top: 0;
+  }
+
+  .point-rule-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .point-rule-list div {
+    padding: 12px;
+    border-radius: 12px;
+    background: #f9fafb;
+  }
+
+  .point-rule-list b,
+  .point-rule-list span {
+    display: block;
+  }
+
+  .point-rule-list span {
+    margin-top: 4px;
+    color: #6b7280;
+    font-size: 14px;
+  }
+
+  .section-title-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+
+  .section-title-row h2 {
+    margin-top: 0;
+    margin-bottom: 6px;
+  }
+
+  .section-title-row p {
+    margin: 0;
+  }
+
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .point-plus {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .point-minus {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  @media (max-width: 900px) {
+    .points-summary-grid,
+    .point-rule-list {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
 
 <%- include('partials/footer') %>
