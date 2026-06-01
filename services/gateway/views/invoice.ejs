@@ -46,13 +46,7 @@
     <p><b>Số điện thoại:</b> <%= order.customer_phone || '' %></p>
     <p><b>Email:</b> <%= order.customer_email || '' %></p>
     <p><b>Địa chỉ giao hàng:</b> <%= order.delivery_address || '' %></p>
-
-    <% if (order.note) { %>
-      <div class="kitchen-note">
-        <b>Ghi chú cho bếp:</b>
-        <p><%= order.note %></p>
-      </div>
-    <% } %>
+    <p><b>Ghi chú:</b> <%= order.note || '' %></p>
 
     <table class="receipt-table">
       <tr>

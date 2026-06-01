@@ -30,6 +30,13 @@
     <%= order.delivery_address || 'Không có' %>
   </p>
 
+  <% if (order.note) { %>
+    <div class="kitchen-note">
+      <b>Ghi chú cho bếp:</b>
+      <p><%= order.note %></p>
+    </div>
+  <% } %>
+
   <p>
     <b>Thời gian tạo:</b>
     <%= new Date(order.created_at).toLocaleString('vi-VN', {
@@ -40,7 +47,14 @@
 
   <p>
     <b>Trạng thái:</b>
-    <span class="badge"><%= order.status %></span>
+
+    <% if (order.status === 'PAID') { %>
+      <span class="badge success-badge">Đã thanh toán</span>
+    <% } else if (order.status === 'CANCELLED') { %>
+      <span class="badge danger-badge">Đã hủy</span>
+    <% } else { %>
+      <span class="badge warning-badge">Chờ thanh toán</span>
+    <% } %>
   </p>
 
   <p>
@@ -59,10 +73,12 @@
     <b><%= Number(order.final_amount || order.total_amount || 0).toLocaleString('vi-VN') %>đ</b>
   </p>
 
-  <p>
-    <b>Điểm sẽ cộng:</b>
-    <%= order.earned_points_if_paid || 0 %> điểm
-  </p>
+  <% if (order.status === 'PENDING') { %>
+    <p>
+      <b>Điểm sẽ cộng sau thanh toán:</b>
+      <%= order.earned_points_if_paid || 0 %> điểm
+    </p>
+  <% } %>
 </div>
 
 <% if (order.items && order.items.length) { %>
@@ -85,32 +101,51 @@
   </table>
 <% } %>
 
-<% if (order.status !== 'PAID' && user.role === 'staff') { %>
-  <form
-    method="post"
-    action="/orders/<%= order.id %>/pay"
-    class="form-inline card"
-    id="payOrderForm"
-  >
-    <select name="method" id="paymentMethod" required>
-      <option value="">-- Chọn phương thức thanh toán --</option>
-      <option value="BANKING">BANKING</option>
-      <option value="MOMO">MOMO</option>
-      <option value="VNPAY">VNPAY</option>
-      <option value="CASH">CASH</option>
-      <option value="CARD">CARD</option>
-    </select>
+<% if (order.status === 'PENDING' && user.role === 'staff') { %>
+  <div class="card order-actions-card">
+    <form
+      method="post"
+      action="/orders/<%= order.id %>/pay"
+      class="form-inline"
+      id="payOrderForm"
+    >
+      <select name="method" id="paymentMethod" required>
+        <option value="">-- Chọn phương thức thanh toán --</option>
+        <option value="BANKING">BANKING</option>
+        <option value="MOMO">MOMO</option>
+        <option value="VNPAY">VNPAY</option>
+        <option value="CASH">CASH</option>
+        <option value="CARD">CARD</option>
+      </select>
 
-    <button type="submit">Xác nhận thanh toán & cộng điểm</button>
-  </form>
+      <button type="submit" class="primary">
+        Xác nhận thanh toán & cộng điểm
+      </button>
+    </form>
+
+    <form
+      method="post"
+      action="/orders/<%= order.id %>/cancel"
+      id="cancelOrderForm"
+      class="form-inline cancel-form"
+    >
+      <button type="submit" class="danger">
+        Hủy đơn hàng
+      </button>
+    </form>
+  </div>
 <% } else if (order.status === 'PAID') { %>
   <div class="success">
     Đơn đã thanh toán thành công.
     <a href="/orders/<%= order.id %>/invoice">Xuất hóa đơn</a>
   </div>
+<% } else if (order.status === 'CANCELLED') { %>
+  <div class="card">
+    <p class="muted">Đơn hàng này đã bị hủy, không thể thanh toán.</p>
+  </div>
 <% } else { %>
   <div class="card">
-    <p class="muted">Bạn không có quyền xác nhận thanh toán đơn hàng này.</p>
+    <p class="muted">Bạn không có quyền xác nhận thanh toán hoặc hủy đơn hàng này.</p>
   </div>
 <% } %>
 
@@ -147,6 +182,18 @@
       }
 
       const ok = confirm('Bạn chắc chắn muốn xác nhận thanh toán và cộng điểm cho đơn hàng này?');
+
+      if (!ok) {
+        e.preventDefault();
+      }
+    });
+  }
+
+  const cancelOrderForm = document.getElementById('cancelOrderForm');
+
+  if (cancelOrderForm) {
+    cancelOrderForm.addEventListener('submit', function (e) {
+      const ok = confirm('Bạn chắc chắn muốn hủy đơn hàng #<%= order.id %>? Nếu đơn có dùng điểm, hệ thống sẽ hoàn lại điểm cho khách.');
 
       if (!ok) {
         e.preventDefault();

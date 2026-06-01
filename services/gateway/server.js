@@ -485,6 +485,12 @@ app.post('/orders/:id/pay', requireLogin, async (req, res) => {
   res.redirect('/orders/' + req.params.id);
 });
 
+app.post('/orders/:id/cancel', requireLogin, staffOnly, async (req, res) => {
+  await api(req, 'order', 'post', `/orders/${req.params.id}/cancel`, req.body);
+
+  res.redirect('/orders/' + req.params.id);
+});
+
 app.get('/customers', requireLogin, staffOnly, async (req, res) => {
   const search = req.query.search || '';
   const customers = await api(req, 'loyalty', 'get', '/customers' + qs({ search }));

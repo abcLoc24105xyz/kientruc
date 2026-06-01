@@ -926,3 +926,131 @@ const PORT = process.env.PORT || process.env.ORDER_PORT || 4004;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`order-service running on port ${PORT}`);
 });
+
+/* =========================
+   CANCEL ORDER
+========================= */
+
+app.post('/orders/:id/cancel', authRequired, asyncHandler(async (req, res) => {
+  const orderId = toPositiveInteger(req.params.id);
+
+  if (!orderId) {
+    return sendValidationError(res, ['Mã đơn hàng không hợp lệ']);
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const order = (
+      await client.query(
+        `
+        SELECT *
+        FROM orders
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [orderId]
+      )
+    ).rows[0];
+
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        message: 'Không tìm thấy đơn hàng'
+      });
+    }
+
+    if (order.status === 'PAID') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        message: 'Không thể hủy đơn đã thanh toán'
+      });
+    }
+
+    if (order.status === 'CANCELLED') {
+      await client.query('ROLLBACK');
+      return res.json({
+        message: 'Đơn hàng đã được hủy trước đó',
+        order
+      });
+    }
+
+    if (
+      isCustomerUser(req) &&
+      Number(order.customer_id) !== Number(req.user.customerId)
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        message: 'Không được hủy đơn của khách khác'
+      });
+    }
+
+    if (isStaffUser(req) && !managerBranchGuard(req, order.branch_id)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        message: 'Không được hủy đơn chi nhánh khác'
+      });
+    }
+
+    if (Number(order.points_used || 0) > 0 && order.customer_id) {
+      await client.query(
+        `
+        UPDATE customers
+        SET points = points + $1,
+            updated_at = NOW()
+        WHERE id = $2
+        `,
+        [order.points_used, order.customer_id]
+      );
+
+      await client.query(
+        `
+        INSERT INTO customer_point_history(
+          customer_id,
+          branch_id,
+          order_id,
+          amount,
+          points_added,
+          points_used,
+          discount_amount,
+          description,
+          purchase_date
+        )
+        VALUES($1, $2, $3, 0, $4, 0, 0, $5, NOW())
+        `,
+        [
+          order.customer_id,
+          order.branch_id,
+          order.id,
+          order.points_used,
+          `Hoàn lại ${order.points_used} điểm do hủy đơn #${order.id}`
+        ]
+      );
+    }
+
+    const updated = await client.query(
+      `
+      UPDATE orders
+      SET status = 'CANCELLED',
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [orderId]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: 'Đã hủy đơn hàng thành công',
+      order: updated.rows[0]
+    });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}));
