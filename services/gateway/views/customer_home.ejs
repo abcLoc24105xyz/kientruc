@@ -162,21 +162,6 @@
         <div id="orderHiddenInputs"></div>
       </section>
     </form>
-
-    <form method="post" action="/customer/address" class="card address-update-card" id="addressForm">
-      <h2>Cập nhật địa chỉ giao hàng mặc định</h2>
-
-      <div class="address-save-row">
-        <input
-          name="address"
-          id="defaultAddress"
-          value="<%= safeCustomer.address || '' %>"
-          required
-        >
-
-        <button type="submit">Lưu địa chỉ</button>
-      </div>
-    </form>
   </main>
 
   <aside class="card cart-card customer-cart-card">
