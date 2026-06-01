@@ -384,6 +384,39 @@ app.get('/orders/new', requireLogin, staffOnly, staffRoleOnly, async (req, res) 
   });
 });
 
+/* =========================
+   POS CUSTOMER LOOKUP API
+   This route is added for /orders/new only.
+   Keep /customers/lookup below unchanged because it renders the customer page.
+========================= */
+app.get('/api/customers/lookup', requireLogin, staffOnly, async (req, res) => {
+  try {
+    const code = String(req.query.code || '').trim();
+
+    if (!code) {
+      return res.status(400).json({
+        message: 'Vui lòng nhập mã khách hàng hoặc số điện thoại'
+      });
+    }
+
+    const result = await api(
+      req,
+      'order',
+      'get',
+      '/customers/lookup' + qs({ code })
+    );
+
+    return res.json(result);
+  } catch (e) {
+    return res.status(e.response?.status || 500).json({
+      message:
+        e.response?.data?.message ||
+        e.response?.data?.detail ||
+        'Không thể kiểm tra khách hàng'
+    });
+  }
+});
+
 app.post('/orders', requireLogin, staffOnly, staffRoleOnly, async (req, res) => {
   const order = await api(req, 'order', 'post', '/orders', {
     branch_id: req.session.user.branchId,

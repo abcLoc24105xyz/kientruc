@@ -14,7 +14,6 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
 let redis;
@@ -60,14 +59,6 @@ function toNonNegativeInteger(value) {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
-function isStaffUser(req) {
-  return req.user && (req.user.role === 'staff' || req.user.type === 'staff');
-}
-
-function isCustomerUser(req) {
-  return req.user && (req.user.role === 'customer' || req.user.type === 'customer');
-}
-
 function isValidDate(value) {
   if (!value) return true;
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(value).getTime());
@@ -76,32 +67,6 @@ function isValidDate(value) {
 function isValidMonth(value) {
   if (!value) return true;
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
-}
-
-function normalizeOrderItems(body) {
-  if (Array.isArray(body.items)) {
-    return body.items;
-  }
-
-  const rawMenuItemIds = body.menu_item_id;
-
-  if (!rawMenuItemIds) {
-    return [];
-  }
-
-  const menuItemIds = Array.isArray(rawMenuItemIds)
-    ? rawMenuItemIds
-    : [rawMenuItemIds];
-
-  return menuItemIds.map((menuItemId) => {
-    const id = toPositiveInteger(menuItemId);
-    const quantity = toPositiveInteger(body[`quantity_${menuItemId}`]);
-
-    return {
-      menu_item_id: id,
-      quantity
-    };
-  });
 }
 
 function sendValidationError(res, errors) {
@@ -164,10 +129,10 @@ function validateCreateOrderPayload(body, req) {
    */
   let channel;
 
-  if (isCustomerUser(req)) {
+  if (req.user.role === 'customer') {
     customer_id = req.user.customerId;
     channel = 'WEB';
-  } else if (isStaffUser(req)) {
+  } else if (req.user.role === 'staff') {
     branch_id = req.user.branchId;
     channel = 'POS';
   } else {
@@ -176,7 +141,8 @@ function validateCreateOrderPayload(body, req) {
 
   const note = cleanString(body.note);
   const delivery_address = cleanString(body.delivery_address);
-  const items = normalizeOrderItems(body);
+
+  const items = Array.isArray(body.items) ? body.items : [];
 
   const use_points =
     body.use_points == null || body.use_points === ''
@@ -208,6 +174,10 @@ function validateCreateOrderPayload(body, req) {
 
   if (delivery_address.length > 255) {
     errors.push('Địa chỉ giao hàng không được vượt quá 255 ký tự');
+  }
+
+  if (!Array.isArray(body.items)) {
+    errors.push('Danh sách sản phẩm phải là mảng');
   }
 
   if (!items.length) {
@@ -284,52 +254,58 @@ app.get('/health', (req, res) => {
 });
 
 /* =========================
-   CUSTOMER LOOKUP FOR POS
+   POS CUSTOMER LIST
+   Màn bán hàng lấy toàn bộ khách hàng từ bảng customers.
+   Không lấy từ orders, vì orders chỉ có khách đã từng mua.
 ========================= */
 
-app.get('/customers/lookup', authRequired, asyncHandler(async (req, res) => {
-  const code = cleanString(req.query.code);
-
-  if (!code) {
-    return res.status(400).json({
-      message: 'Vui lòng nhập mã khách hàng hoặc số điện thoại'
+app.get('/pos/customers', authRequired, asyncHandler(async (req, res) => {
+  if (!['staff', 'manager', 'admin'].includes(req.user.role)) {
+    return res.status(403).json({
+      message: 'Chỉ staff/manager/admin được xem danh sách khách hàng khi bán hàng'
     });
   }
 
-  const normalizedCode = code.replace(/^#/, '').trim();
-  const normalizedPhone = normalizedCode.replace(/\s+/g, '');
+  const q = cleanString(req.query.q);
+  const limit = Math.min(toPositiveInteger(req.query.limit) || 500, 1000);
 
-  const customer = (
-    await pool.query(
-      `
-      SELECT
-        id,
-        name,
-        phone,
-        email,
-        points
-      FROM customers
-      WHERE COALESCE(status, 'ACTIVE') <> 'DELETED'
-        AND (
-          id::text = $1
-          OR phone = $1
-          OR regexp_replace(COALESCE(phone, ''), '\\s+', '', 'g') = $2
-        )
-      LIMIT 1
-      `,
-      [normalizedCode, normalizedPhone]
-    )
-  ).rows[0];
+  const params = [];
+  let where = `WHERE COALESCE(status, 'ACTIVE') <> 'DELETED'`;
 
-  if (!customer) {
-    return res.status(404).json({
-      message: 'Không tìm thấy khách hàng'
-    });
+  if (q) {
+    params.push(`%${q.toLowerCase()}%`);
+    where += `
+      AND (
+        LOWER(COALESCE(name, '')) LIKE $${params.length}
+        OR LOWER(COALESCE(phone, '')) LIKE $${params.length}
+        OR LOWER(COALESCE(email, '')) LIKE $${params.length}
+      )
+    `;
   }
 
-  return res.json({
-    customer
-  });
+  params.push(limit);
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      id,
+      name,
+      phone,
+      email,
+      points,
+      rank,
+      status,
+      created_at,
+      updated_at
+    FROM customers
+    ${where}
+    ORDER BY name ASC, id ASC
+    LIMIT $${params.length}
+    `,
+    params
+  );
+
+  res.json(rows);
 }));
 
 /* =========================
@@ -353,7 +329,7 @@ app.get('/orders', authRequired, asyncHandler(async (req, res) => {
   const params = [];
   let where = 'WHERE 1=1';
 
-  if (isCustomerUser(req)) {
+  if (req.user.role === 'customer') {
     params.push(req.user.customerId);
     where += ` AND o.customer_id = $${params.length}`;
   } else if (req.user.role !== 'admin') {
@@ -383,7 +359,7 @@ app.get('/orders', authRequired, asyncHandler(async (req, res) => {
 
   const { rows } = await pool.query(
     `
-    SELECT
+    SELECT 
       o.*,
       b.name AS branch_name,
       c.name AS customer_name,
@@ -416,7 +392,7 @@ app.get('/orders/:id', authRequired, asyncHandler(async (req, res) => {
   const order = (
     await pool.query(
       `
-      SELECT
+      SELECT 
         o.*,
         b.name AS branch_name,
         b.address AS branch_address,
@@ -439,7 +415,7 @@ app.get('/orders/:id', authRequired, asyncHandler(async (req, res) => {
   }
 
   if (
-    isCustomerUser(req) &&
+    req.user.role === 'customer' &&
     Number(order.customer_id) !== Number(req.user.customerId)
   ) {
     return res.status(403).json({
@@ -448,7 +424,7 @@ app.get('/orders/:id', authRequired, asyncHandler(async (req, res) => {
   }
 
   if (
-    isStaffUser(req) &&
+    req.user.type === 'staff' &&
     req.user.role !== 'admin' &&
     Number(order.branch_id) !== Number(req.user.branchId)
   ) {
@@ -518,7 +494,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
     use_points
   } = validation.data;
 
-  if (isStaffUser(req) && !managerBranchGuard(req, branch_id)) {
+  if (req.user.type === 'staff' && !managerBranchGuard(req, branch_id)) {
     return res.status(403).json({
       message: 'Không được tạo đơn ở chi nhánh khác'
     });
@@ -535,7 +511,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
         SELECT id
         FROM branches
         WHERE id = $1
-          AND COALESCE(status, 'ACTIVE') <> 'DELETED'
+          AND status <> 'DELETED'
         `,
         [branch_id]
       )
@@ -555,7 +531,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
           SELECT id
           FROM customers
           WHERE id = $1
-            AND COALESCE(status, 'ACTIVE') <> 'DELETED'
+            AND status <> 'DELETED'
           `,
           [customer_id]
         )
@@ -576,7 +552,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
       const pr = (
         await client.query(
           `
-          SELECT
+          SELECT 
             bmi.price,
             mi.name
           FROM branch_menu_items bmi
@@ -683,7 +659,7 @@ app.post('/orders', authRequired, asyncHandler(async (req, res) => {
       [
         branch_id,
         customer_id || null,
-        isStaffUser(req) ? req.user.id : null,
+        req.user.type === 'staff' ? req.user.id : null,
         channel,
         total,
         discount,
@@ -803,7 +779,7 @@ app.post('/orders/:id/pay', authRequired, asyncHandler(async (req, res) => {
     }
 
     if (
-      isCustomerUser(req) &&
+      req.user.role === 'customer' &&
       Number(order.customer_id) !== Number(req.user.customerId)
     ) {
       await client.query('ROLLBACK');
@@ -812,7 +788,7 @@ app.post('/orders/:id/pay', authRequired, asyncHandler(async (req, res) => {
       });
     }
 
-    if (isStaffUser(req) && !managerBranchGuard(req, order.branch_id)) {
+    if (req.user.type === 'staff' && !managerBranchGuard(req, order.branch_id)) {
       await client.query('ROLLBACK');
       return res.status(403).json({
         message: 'Không được thanh toán đơn chi nhánh khác'
@@ -945,7 +921,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 4004;
+const PORT = process.env.PORT || process.env.ORDER_PORT || 4004;
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`order-service running on port ${PORT}`);
 });
