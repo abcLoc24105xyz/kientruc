@@ -135,7 +135,7 @@
   </div>
 <% } %>
 
-<% if (order.status === 'PENDING' && user.role === 'staff') { %>
+<% if (order.status === 'PENDING' && (user.role === 'staff' || user.role === 'customer')) { %>
   <div class="card order-actions-card">
     <div>
       <h2>Xử lý đơn hàng</h2>
@@ -234,7 +234,7 @@
 
   if (cancelOrderForm) {
     cancelOrderForm.addEventListener('submit', function (e) {
-      const ok = confirm('Bạn chắc chắn muốn hủy đơn hàng #<%= order.id %>? Nếu đơn có dùng điểm, hệ thống sẽ hoàn lại điểm cho khách.');
+      const ok = confirm('Bạn chắc chắn muốn hủy đơn hàng #<%= order.id %>?');
 
       if (!ok) {
         e.preventDefault();

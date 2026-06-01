@@ -485,19 +485,26 @@ app.post('/orders/:id/pay', requireLogin, async (req, res) => {
   res.redirect('/orders/' + req.params.id);
 });
 
-app.post('/orders/:id/cancel', requireLogin, staffOnly, staffRoleOnly, async (req, res) => {
+app.post('/orders/:id/cancel', requireLogin, async (req, res) => {
   try {
     await api(req, 'order', 'post', `/orders/${req.params.id}/cancel`, {});
 
-    res.redirect('/orders/' + req.params.id + '?success=' + encodeURIComponent('Đã hủy đơn hàng thành công.'));
-  } catch (e) {
-    console.error('[GATEWAY CANCEL ORDER ERROR]', e.response?.data || e.message);
+    if (req.session.user.role === 'customer') {
+      return res.redirect('/customer/orders?success=' + encodeURIComponent('Đã hủy đơn hàng thành công.'));
+    }
 
-    res.redirect('/orders/' + req.params.id + '?error=' + encodeURIComponent(
+    return res.redirect('/orders/' + req.params.id + '?success=' + encodeURIComponent('Đã hủy đơn hàng thành công.'));
+  } catch (e) {
+    const message =
       e.response?.data?.detail ||
       e.response?.data?.message ||
-      'Không thể hủy đơn hàng.'
-    ));
+      'Không thể hủy đơn hàng.';
+
+    if (req.session.user.role === 'customer') {
+      return res.redirect('/customer/orders?error=' + encodeURIComponent(message));
+    }
+
+    return res.redirect('/orders/' + req.params.id + '?error=' + encodeURIComponent(message));
   }
 });
 

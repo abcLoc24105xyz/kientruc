@@ -4,7 +4,7 @@
   <div>
     <span class="eyebrow">My orders</span>
     <h1>Hàng đã mua</h1>
-    <p>Theo dõi lịch sử đơn hàng và xuất hóa đơn khi cần.</p>
+    <p>Theo dõi lịch sử đơn hàng, hủy đơn đang chờ và xuất hóa đơn khi cần.</p>
   </div>
 </section>
 
@@ -17,62 +17,96 @@
   <div class="card empty-state">
     <h2>Chưa có đơn hàng nào</h2>
     <p class="muted">Bạn chưa mua sản phẩm nào. Hãy đặt cà phê để bắt đầu tích điểm.</p>
-    <a class="btn" href="/customer/shop">Đặt cà phê ngay</a>
+    <a class="btn" href="/customer">Đặt cà phê ngay</a>
   </div>
 <% } else { %>
-  <table>
-    <tr>
-      <th>Mã đơn</th>
-      <th>Chi nhánh</th>
-      <th>Trạng thái</th>
-      <th>Tạm tính</th>
-      <th>Giảm</th>
-      <th>Thanh toán</th>
-      <th>Ngày mua</th>
-      <th>Hóa đơn</th>
-    </tr>
+  <div class="card customer-orders-card">
+    <div class="orders-title-row">
+      <div>
+        <h2>Danh sách đơn hàng</h2>
+        <p class="muted">Chỉ có thể hủy đơn khi đơn còn ở trạng thái chờ thanh toán.</p>
+      </div>
+    </div>
 
-    <% orders.forEach(o => { %>
-      <tr>
-        <td>
-          <a href="/orders/<%= o.id %>">#<%= o.id %></a>
-        </td>
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>Mã đơn</th>
+          <th>Chi nhánh</th>
+          <th>Trạng thái</th>
+          <th>Tạm tính</th>
+          <th>Giảm</th>
+          <th>Thanh toán</th>
+          <th>Ngày tạo/mua</th>
+          <th>Thao tác</th>
+        </tr>
 
-        <td><%= o.branch_name || 'Không rõ' %></td>
+        <% orders.forEach(o => { %>
+          <tr>
+            <td>
+              <a href="/orders/<%= o.id %>">#<%= o.id %></a>
+            </td>
 
-        <td>
-          <span class="badge"><%= o.status %></span>
-        </td>
+            <td><%= o.branch_name || 'Không rõ' %></td>
 
-        <td>
-          <%= Number(o.total_amount || 0).toLocaleString('vi-VN') %>đ
-        </td>
+            <td>
+              <% if (o.status === 'PAID' || o.status === 'COMPLETED') { %>
+                <span class="badge success-badge">Đã thanh toán</span>
+              <% } else if (o.status === 'CANCELLED') { %>
+                <span class="badge danger-badge">Đã hủy</span>
+              <% } else { %>
+                <span class="badge warning-badge">Chờ thanh toán</span>
+              <% } %>
+            </td>
 
-        <td>
-          <%= Number(o.discount_amount || 0).toLocaleString('vi-VN') %>đ
-        </td>
+            <td>
+              <%= Number(o.total_amount || 0).toLocaleString('vi-VN') %>đ
+            </td>
 
-        <td>
-          <b><%= Number(o.final_amount || o.total_amount || 0).toLocaleString('vi-VN') %>đ</b>
-        </td>
+            <td>
+              <%= Number(o.discount_amount || 0).toLocaleString('vi-VN') %>đ
+            </td>
 
-        <td>
-          <%= new Date(o.paid_at || o.created_at).toLocaleString('vi-VN', {
-            timeZone: 'Asia/Ho_Chi_Minh',
-            hour12: false
-          }) %>
-        </td>
+            <td>
+              <b><%= Number(o.final_amount || o.total_amount || 0).toLocaleString('vi-VN') %>đ</b>
+            </td>
 
-        <td>
-          <% if (o.status === 'PAID' || o.status === 'COMPLETED') { %>
-            <a class="btn light" href="/orders/<%= o.id %>/invoice">Xuất</a>
-          <% } else { %>
-            <span class="muted">Chưa thanh toán</span>
-          <% } %>
-        </td>
-      </tr>
-    <% }) %>
-  </table>
+            <td>
+              <%= new Date(o.paid_at || o.created_at).toLocaleString('vi-VN', {
+                timeZone: 'Asia/Ho_Chi_Minh',
+                hour12: false
+              }) %>
+            </td>
+
+            <td>
+              <div class="order-actions">
+                <a class="btn light" href="/orders/<%= o.id %>">Chi tiết</a>
+
+                <% if (o.status === 'PAID' || o.status === 'COMPLETED') { %>
+                  <a class="btn light" href="/orders/<%= o.id %>/invoice">Xuất hóa đơn</a>
+                <% } else if (o.status === 'PENDING') { %>
+                  <form
+                    method="post"
+                    action="/orders/<%= o.id %>/cancel"
+                    class="inline-cancel-form"
+                    onsubmit="return confirm('Bạn chắc chắn muốn hủy đơn hàng #<%= o.id %>?');"
+                  >
+                    <button type="submit" class="danger small-danger">
+                      Hủy đơn
+                    </button>
+                  </form>
+                <% } else if (o.status === 'CANCELLED') { %>
+                  <span class="muted">Đã hủy</span>
+                <% } else { %>
+                  <span class="muted">Chưa thanh toán</span>
+                <% } %>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+      </table>
+    </div>
+  </div>
 <% } %>
 
 <script>
@@ -102,5 +136,6 @@
     showToast(params.get('error'), 'error');
   }
 </script>
+
 
 <%- include('partials/footer') %>

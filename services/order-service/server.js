@@ -1015,7 +1015,7 @@ app.post('/orders/:id/cancel', authRequired, asyncHandler(async (req, res) => {
     }
 
     if (
-      isCustomerUser(req) &&
+      req.user.role === 'customer' &&
       Number(order.customer_id) !== Number(req.user.customerId)
     ) {
       await client.query('ROLLBACK');

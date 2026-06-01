@@ -1211,3 +1211,82 @@ th {
   white-space: pre-line;
 }
 
+.customer-orders-card h2 {
+    margin-top: 0;
+    margin-bottom: 6px;
+  }
+
+  .orders-title-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+
+  .orders-title-row p {
+    margin: 0;
+  }
+
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .order-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .inline-cancel-form {
+    display: inline-block;
+    margin: 0;
+  }
+
+  .danger {
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    background: #dc2626;
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .danger:hover {
+    background: #b91c1c;
+  }
+
+  .small-danger {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .danger-badge {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .success-badge {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .warning-badge {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  @media (max-width: 720px) {
+    .order-actions {
+      display: grid;
+      gap: 6px;
+    }
+
+    .order-actions .btn,
+    .order-actions button {
+      width: 100%;
+      text-align: center;
+    }
+  }
