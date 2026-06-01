@@ -1,10 +1,10 @@
 <%- include('partials/header') %>
 
-<section class="page-head">
+<section class="page-head pos-page-head">
   <div>
     <span class="eyebrow">POS</span>
     <h1>Tạo đơn tại quầy/chi nhánh</h1>
-    <p>Chọn khách hàng, áp dụng điểm giảm giá và thêm món vào đơn bán hàng.</p>
+    <p>Nhập mã khách hàng hoặc số điện thoại, chọn món nhanh và theo dõi tóm tắt đơn ngay bên cạnh.</p>
   </div>
 </section>
 
@@ -13,129 +13,196 @@
   <button type="button" onclick="closeToast()">×</button>
 </div>
 
-<form method="get" class="form-inline card">
-  <label>Chi nhánh</label>
+<div class="pos-layout">
+  <main class="pos-main">
+    <form method="get" class="card pos-branch-card">
+      <label>Chi nhánh</label>
 
-  <select name="branch_id" onchange="this.form.submit()">
-    <% branches.forEach(b => { %>
-      <option value="<%= b.id %>" <%= Number(branchId) === b.id ? 'selected' : '' %>>
-        <%= b.name %>
-      </option>
-    <% }) %>
-  </select>
-</form>
-
-<form method="post" action="/orders" class="card" id="posOrderForm">
-  <input type="hidden" name="branch_id" value="<%= branchId %>">
-
-  <section class="two">
-    <div>
-      <label>Khách hàng</label>
-
-      <select name="customer_id" id="customerSelect">
-        <option value="" data-points="0">Khách lẻ</option>
-
-        <% customers.forEach(c => { %>
-          <option value="<%= c.id %>" data-points="<%= c.points || 0 %>">
-            #<%= c.id %> - <%= c.name %> - <%= c.points || 0 %> điểm
+      <select name="branch_id" onchange="this.form.submit()">
+        <% branches.forEach(b => { %>
+          <option value="<%= b.id %>" <%= Number(branchId) === b.id ? 'selected' : '' %>>
+            <%= b.name %>
           </option>
         <% }) %>
       </select>
+    </form>
 
-      <label>Dùng điểm giảm giá</label>
+    <form method="post" action="/orders" class="pos-form" id="posOrderForm">
+      <input type="hidden" name="branch_id" value="<%= branchId %>">
 
-      <input
-        type="number"
-        name="use_points"
-        id="usePoints"
-        min="0"
-        value="0"
-      >
+      <section class="pos-grid">
+        <div class="card pos-customer-card">
+          <h2>Thông tin đơn</h2>
 
-      <small>
-        1 điểm = 500đ. Hệ thống tự trừ điểm và lưu lịch sử.
-      </small>
+          <label>Mã khách hàng / Số điện thoại</label>
 
-      <label>Địa chỉ nhận hàng</label>
+          <div class="customer-lookup">
+            <input
+              type="text"
+              id="customerCodeInput"
+              placeholder="Nhập mã KH hoặc số điện thoại"
+              autocomplete="off"
+            >
 
-      <input
-        name="delivery_address"
-        id="deliveryAddress"
-        placeholder="Nhập địa chỉ nếu giao hàng"
-      >
+            <button type="button" class="secondary" id="findCustomerBtn">
+              Kiểm tra
+            </button>
+          </div>
 
-      <label>Kênh bán</label>
+          <input type="hidden" name="customer_id" id="customerIdInput" value="">
 
-      <select name="channel" id="channelSelect" required>
-        <option value="POS">POS</option>
-        <option value="WEB">WEB</option>
-        <option value="MOBILE">MOBILE</option>
-      </select>
+          <div id="customerInfo" class="customer-info muted">
+            Khách lẻ
+          </div>
 
-      <textarea name="note" placeholder="Ghi chú"></textarea>
+          <label>Dùng điểm giảm giá</label>
 
-      <button class="primary" type="submit">Tạo đơn</button>
+          <input
+            type="number"
+            name="use_points"
+            id="usePoints"
+            min="0"
+            value="0"
+          >
+
+          <small>
+            1 điểm = 500đ. Khách lẻ không được dùng điểm.
+          </small>
+
+          <label>Địa chỉ nhận hàng</label>
+
+          <input
+            name="delivery_address"
+            id="deliveryAddress"
+            placeholder="Nhập địa chỉ nếu giao hàng"
+          >
+
+          <label>Kênh bán</label>
+
+          <select name="channel" id="channelSelect" required>
+            <option value="POS">POS</option>
+            <option value="WEB">WEB</option>
+            <option value="MOBILE">MOBILE</option>
+          </select>
+
+          <label>Ghi chú</label>
+          <textarea name="note" placeholder="Ghi chú cho đơn hàng"></textarea>
+        </div>
+
+        <div class="card pos-products-card">
+          <div class="section-title-row">
+            <div>
+              <h2>Chọn món</h2>
+              <p class="muted">Bấm “Thêm” để đưa món vào đơn. Có thể tìm nhanh theo tên món.</p>
+            </div>
+          </div>
+
+          <div class="product-toolbar">
+            <input
+              type="search"
+              id="productSearchInput"
+              placeholder="Tìm món..."
+              autocomplete="off"
+            >
+          </div>
+
+          <% if (!branchMenu || branchMenu.length === 0) { %>
+            <div class="empty-state">
+              <h2>Chưa có món</h2>
+              <p class="muted">Chi nhánh này chưa có sản phẩm đang bán.</p>
+            </div>
+          <% } else { %>
+            <div class="pos-products-list" id="productsList">
+              <% branchMenu.forEach(m => { %>
+                <article
+                  class="pos-product-item"
+                  data-product-id="<%= m.menu_item_id %>"
+                  data-product-name="<%= String(m.name || '').toLowerCase() %>"
+                  data-product-price="<%= m.price || 0 %>"
+                >
+                  <img src="<%= m.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=300' %>" alt="<%= m.name %>">
+
+                  <div class="product-info">
+                    <b><%= m.name %></b>
+                    <span><%= Number(m.price || 0).toLocaleString('vi-VN') %>đ</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="add-product-btn"
+                    data-id="<%= m.menu_item_id %>"
+                    data-name="<%= m.name %>"
+                    data-price="<%= m.price || 0 %>"
+                  >
+                    + Thêm
+                  </button>
+                </article>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+      </section>
+
+      <div id="orderHiddenInputs"></div>
+    </form>
+  </main>
+
+  <aside class="card cart-card pos-cart-card">
+    <div class="cart-header">
+      <div>
+        <h2>Tóm tắt đơn</h2>
+        <p class="muted">Theo dõi món đã chọn và tổng tiền.</p>
+      </div>
     </div>
 
-    <div>
-      <h2>Chọn món</h2>
-
-      <% if (!branchMenu || branchMenu.length === 0) { %>
-        <div class="empty-state">
-          <h2>Chưa có món</h2>
-          <p class="muted">Chi nhánh này chưa có sản phẩm đang bán.</p>
-        </div>
-      <% } else { %>
-        <div class="products">
-          <% branchMenu.forEach(m => { %>
-            <label class="product-mini">
-              <img src="<%= m.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=300' %>">
-
-              <span>
-                <b><%= m.name %></b><br>
-                <span data-price="<%= m.price %>">
-                  <%= Number(m.price || 0).toLocaleString('vi-VN') %>đ
-                </span>
-              </span>
-
-              <input
-                type="checkbox"
-                class="choose"
-                name="menu_item_id"
-                value="<%= m.menu_item_id %>"
-              >
-
-              <input
-                type="number"
-                class="qty"
-                name="quantity_<%= m.menu_item_id %>"
-                value="1"
-                min="1"
-              >
-            </label>
-          <% }) %>
-        </div>
-      <% } %>
+    <div class="cart-customer-box">
+      <span>Khách hàng</span>
+      <b id="cartCustomerName">Khách lẻ</b>
+      <small id="cartCustomerPoints">0 điểm hiện có</small>
     </div>
-  </section>
-</form>
 
-<aside class="card cart-card">
-  <h2>Tóm tắt đơn</h2>
+    <div id="cartItems" class="cart-items muted">
+      Chưa chọn sản phẩm
+    </div>
 
-  <div id="cartItems" class="muted">Chưa chọn sản phẩm</div>
+    <hr>
 
-  <hr>
+    <div class="cart-money-row">
+      <span>Tạm tính</span>
+      <b id="subtotal">0đ</b>
+    </div>
 
-  <p>Tạm tính: <b id="subtotal">0đ</b></p>
-  <p>Dùng điểm: <b id="pointDiscount">0đ</b></p>
-  <p>Cần thanh toán: <b id="finalTotal">0đ</b></p>
-  <p class="muted">Sau khi tạo đơn, nhân viên vào chi tiết đơn để xác nhận thanh toán.</p>
-</aside>
+    <div class="cart-money-row">
+      <span>Dùng điểm</span>
+      <b id="pointDiscount">0đ</b>
+    </div>
+
+    <div class="cart-money-row final">
+      <span>Cần thanh toán</span>
+      <b id="finalTotal">0đ</b>
+    </div>
+
+    <button class="primary cart-submit-btn" type="submit" form="posOrderForm">
+      Tạo đơn
+    </button>
+
+    <p class="muted cart-note">
+      Sau khi tạo đơn, nhân viên vào chi tiết đơn để xác nhận thanh toán.
+    </p>
+  </aside>
+</div>
 
 <script>
   const toast = document.getElementById('toast');
   const toastMessage = document.getElementById('toastMessage');
+  const selectedProducts = new Map();
+
+  let currentCustomer = {
+    id: '',
+    name: '',
+    phone: '',
+    points: 0
+  };
 
   function showToast(message, type = 'success') {
     toast.className = `toast ${type}`;
@@ -154,48 +221,203 @@
     return Number(value || 0).toLocaleString('vi-VN') + 'đ';
   }
 
-  function getCustomerPoints() {
-    const customerSelect = document.getElementById('customerSelect');
-    const selectedOption = customerSelect.options[customerSelect.selectedIndex];
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
-    return Number(selectedOption.dataset.points || 0);
+  function getCustomerPoints() {
+    return Number(currentCustomer.points || 0);
+  }
+
+  function updateCustomerSummary() {
+    const customerNameElement = document.getElementById('cartCustomerName');
+    const customerPointsElement = document.getElementById('cartCustomerPoints');
+
+    if (!currentCustomer.id) {
+      customerNameElement.textContent = 'Khách lẻ';
+      customerPointsElement.textContent = '0 điểm hiện có';
+      return;
+    }
+
+    customerNameElement.textContent = currentCustomer.name || 'Khách hàng';
+    customerPointsElement.textContent = Number(currentCustomer.points || 0).toLocaleString('vi-VN') + ' điểm hiện có';
+  }
+
+  function resetCustomer() {
+    currentCustomer = {
+      id: '',
+      name: '',
+      phone: '',
+      points: 0
+    };
+
+    document.getElementById('customerIdInput').value = '';
+    document.getElementById('customerInfo').textContent = 'Khách lẻ';
+    document.getElementById('customerInfo').className = 'customer-info muted';
+
+    updateCustomerSummary();
+    calcTotal();
+  }
+
+  async function findCustomerByCode() {
+    const codeInput = document.getElementById('customerCodeInput');
+    const code = codeInput.value.trim();
+
+    codeInput.classList.remove('input-error');
+
+    if (!code) {
+      resetCustomer();
+      showToast('Nếu là khách lẻ thì có thể bỏ trống mã khách hàng.', 'success');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/customers/lookup?code=${encodeURIComponent(code)}`);
+      const data = await res.json();
+
+      if (!res.ok || !data.customer) {
+        resetCustomer();
+        codeInput.classList.add('input-error');
+        showToast(data.message || 'Không tìm thấy khách hàng.', 'error');
+        return;
+      }
+
+      currentCustomer = {
+        id: data.customer.id,
+        name: data.customer.name || '',
+        phone: data.customer.phone || '',
+        points: Number(data.customer.points || 0)
+      };
+
+      document.getElementById('customerIdInput').value = currentCustomer.id;
+      document.getElementById('customerInfo').className = 'customer-info success';
+      document.getElementById('customerInfo').innerHTML =
+        '<b>' + escapeHtml(currentCustomer.name) + '</b>' +
+        (currentCustomer.phone ? ' - ' + escapeHtml(currentCustomer.phone) : '') +
+        ' - ' +
+        currentCustomer.points.toLocaleString('vi-VN') +
+        ' điểm';
+
+      updateCustomerSummary();
+      showToast('Đã tìm thấy khách hàng.', 'success');
+      calcTotal();
+    } catch (err) {
+      showToast('Không thể kiểm tra khách hàng. Vui lòng thử lại.', 'error');
+    }
+  }
+
+  function addProduct(product) {
+    const id = String(product.id);
+    const existingProduct = selectedProducts.get(id);
+
+    if (existingProduct) {
+      existingProduct.quantity += 1;
+    } else {
+      selectedProducts.set(id, {
+        id,
+        name: product.name,
+        price: Number(product.price || 0),
+        quantity: 1
+      });
+    }
+
+    renderCart();
+  }
+
+  function increaseProduct(id) {
+    const product = selectedProducts.get(String(id));
+
+    if (!product) return;
+
+    product.quantity += 1;
+    renderCart();
+  }
+
+  function decreaseProduct(id) {
+    const product = selectedProducts.get(String(id));
+
+    if (!product) return;
+
+    product.quantity -= 1;
+
+    if (product.quantity <= 0) {
+      selectedProducts.delete(String(id));
+    }
+
+    renderCart();
+  }
+
+  function removeProduct(id) {
+    selectedProducts.delete(String(id));
+    renderCart();
   }
 
   function getSelectedItems() {
-    const items = [];
-
-    document.querySelectorAll('.product-mini').forEach(function (row) {
-      const checkbox = row.querySelector('.choose');
-      const quantityInput = row.querySelector('.qty');
-      const priceElement = row.querySelector('[data-price]');
-      const nameElement = row.querySelector('b');
-
-      if (checkbox && checkbox.checked) {
-        const quantity = Number(quantityInput.value || 1);
-        const price = Number(priceElement.dataset.price || 0);
-        const name = nameElement.textContent.trim();
-
-        items.push({
-          name,
-          quantity,
-          price,
-          quantityInput
-        });
-      }
+    return Array.from(selectedProducts.values()).map(function (product) {
+      return {
+        name: product.name,
+        quantity: Number(product.quantity || 0),
+        price: Number(product.price || 0),
+        id: product.id
+      };
     });
+  }
 
-    return items;
+  function renderHiddenInputs() {
+    const hiddenInputs = document.getElementById('orderHiddenInputs');
+
+    hiddenInputs.innerHTML = getSelectedItems().map(function (item) {
+      return `
+        <input type="hidden" name="menu_item_id" value="${escapeHtml(item.id)}">
+        <input type="hidden" name="quantity_${escapeHtml(item.id)}" value="${item.quantity}">
+      `;
+    }).join('');
+  }
+
+  function renderCart() {
+    const cartItems = document.getElementById('cartItems');
+    const selectedItems = getSelectedItems();
+
+    if (selectedItems.length === 0) {
+      cartItems.className = 'cart-items muted';
+      cartItems.innerHTML = 'Chưa chọn sản phẩm';
+    } else {
+      cartItems.className = 'cart-items';
+      cartItems.innerHTML = selectedItems.map(function (item) {
+        return `
+          <div class="cart-line">
+            <div class="cart-line-info">
+              <b>${escapeHtml(item.name)}</b>
+              <span>${money(item.price)} x ${item.quantity}</span>
+            </div>
+
+            <div class="cart-line-actions">
+              <button type="button" onclick="decreaseProduct('${escapeHtml(item.id)}')">−</button>
+              <strong>${item.quantity}</strong>
+              <button type="button" onclick="increaseProduct('${escapeHtml(item.id)}')">+</button>
+              <button type="button" class="remove-btn" onclick="removeProduct('${escapeHtml(item.id)}')">×</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    renderHiddenInputs();
+    calcTotal();
   }
 
   function calcTotal() {
     const selectedItems = getSelectedItems();
 
     let subtotal = 0;
-    const itemTexts = [];
 
     selectedItems.forEach(function (item) {
       subtotal += item.price * item.quantity;
-      itemTexts.push(item.name + ' x ' + item.quantity);
     });
 
     const usePointsInput = document.getElementById('usePoints');
@@ -203,26 +425,55 @@
     const pointDiscount = usePoints * 500;
     const finalTotal = Math.max(0, subtotal - pointDiscount);
 
-    document.getElementById('cartItems').innerHTML = itemTexts.length
-      ? itemTexts.map(function (text) {
-          return '<div>' + text + '</div>';
-        }).join('')
-      : 'Chưa chọn sản phẩm';
-
     document.getElementById('subtotal').textContent = money(subtotal);
     document.getElementById('pointDiscount').textContent = money(pointDiscount);
     document.getElementById('finalTotal').textContent = money(finalTotal);
   }
 
-  document.querySelectorAll('.choose, .qty, #usePoints, #customerSelect').forEach(function (input) {
-    input.addEventListener('input', calcTotal);
-    input.addEventListener('change', calcTotal);
+  document.querySelectorAll('.add-product-btn').forEach(function (button) {
+    button.addEventListener('click', function () {
+      addProduct({
+        id: button.dataset.id,
+        name: button.dataset.name,
+        price: button.dataset.price
+      });
+    });
+  });
+
+  document.getElementById('productSearchInput').addEventListener('input', function () {
+    const keyword = this.value.trim().toLowerCase();
+
+    document.querySelectorAll('.pos-product-item').forEach(function (item) {
+      const name = item.dataset.productName || '';
+      item.style.display = name.includes(keyword) ? '' : 'none';
+    });
+  });
+
+  document.getElementById('usePoints').addEventListener('input', calcTotal);
+  document.getElementById('usePoints').addEventListener('change', calcTotal);
+
+  document.getElementById('findCustomerBtn').addEventListener('click', findCustomerByCode);
+
+  document.getElementById('customerCodeInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      findCustomerByCode();
+    }
+  });
+
+  document.getElementById('customerCodeInput').addEventListener('input', function () {
+    this.classList.remove('input-error');
+
+    if (!this.value.trim()) {
+      resetCustomer();
+    }
   });
 
   const posOrderForm = document.getElementById('posOrderForm');
 
   posOrderForm.addEventListener('submit', function (e) {
-    const customerSelect = document.getElementById('customerSelect');
+    const customerCodeInput = document.getElementById('customerCodeInput');
+    const customerIdInput = document.getElementById('customerIdInput');
     const usePointsInput = document.getElementById('usePoints');
     const deliveryAddressInput = document.getElementById('deliveryAddress');
     const channelSelect = document.getElementById('channelSelect');
@@ -232,7 +483,7 @@
     });
 
     const selectedItems = getSelectedItems();
-    const customerId = customerSelect.value;
+    const customerId = customerIdInput.value;
     const customerPoints = getCustomerPoints();
     const usePoints = Number(usePointsInput.value || 0);
     const deliveryAddress = deliveryAddressInput.value.trim();
@@ -247,7 +498,6 @@
     for (const item of selectedItems) {
       if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
         e.preventDefault();
-        item.quantityInput.classList.add('input-error');
         showToast('Số lượng món phải lớn hơn 0.', 'error');
         return;
       }
@@ -262,7 +512,7 @@
 
     if (!customerId && usePoints > 0) {
       e.preventDefault();
-      customerSelect.classList.add('input-error');
+      customerCodeInput.classList.add('input-error');
       usePointsInput.classList.add('input-error');
       showToast('Khách lẻ không thể dùng điểm giảm giá.', 'error');
       return;
@@ -300,7 +550,289 @@
     showToast(params.get('error'), 'error');
   }
 
-  calcTotal();
+  updateCustomerSummary();
+  renderCart();
 </script>
+
+<style>
+  .pos-page-head {
+    margin-bottom: 16px;
+  }
+
+  .pos-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 18px;
+    align-items: start;
+  }
+
+  .pos-main {
+    min-width: 0;
+  }
+
+  .pos-branch-card {
+    margin-bottom: 16px;
+  }
+
+  .pos-form {
+    display: block;
+  }
+
+  .pos-grid {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+
+  .pos-customer-card,
+  .pos-products-card,
+  .pos-cart-card {
+    padding: 18px;
+  }
+
+  .pos-customer-card h2,
+  .pos-products-card h2,
+  .pos-cart-card h2 {
+    margin-top: 0;
+    margin-bottom: 8px;
+  }
+
+  .customer-lookup {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .customer-lookup input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .customer-info {
+    margin-top: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f3f4f6;
+  }
+
+  .customer-info.success {
+    color: #166534;
+    background: #dcfce7;
+  }
+
+  .secondary,
+  .add-product-btn,
+  .cart-line-actions button {
+    border: none;
+    cursor: pointer;
+  }
+
+  .secondary {
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #e5e7eb;
+    color: #111827;
+    white-space: nowrap;
+  }
+
+  .secondary:hover {
+    background: #d1d5db;
+  }
+
+  .section-title-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+
+  .section-title-row p {
+    margin: 0;
+  }
+
+  .product-toolbar {
+    margin-bottom: 14px;
+  }
+
+  .product-toolbar input {
+    width: 100%;
+  }
+
+  .pos-products-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+    max-height: 680px;
+    overflow: auto;
+    padding-right: 4px;
+  }
+
+  .pos-product-item {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fff;
+  }
+
+  .pos-product-item img {
+    width: 70px;
+    height: 70px;
+    object-fit: cover;
+    border-radius: 12px;
+    grid-row: span 2;
+  }
+
+  .product-info {
+    min-width: 0;
+  }
+
+  .product-info b {
+    display: block;
+    line-height: 1.35;
+  }
+
+  .product-info span {
+    display: block;
+    margin-top: 4px;
+    font-weight: 700;
+  }
+
+  .add-product-btn {
+    grid-column: 2;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: #111827;
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .add-product-btn:hover {
+    opacity: 0.9;
+  }
+
+  .pos-cart-card {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+  }
+
+  .cart-header {
+    margin-bottom: 12px;
+  }
+
+  .cart-header p {
+    margin: 0;
+  }
+
+  .cart-customer-box {
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    border-radius: 14px;
+    background: #f9fafb;
+    margin-bottom: 14px;
+  }
+
+  .cart-customer-box span,
+  .cart-customer-box small {
+    color: #6b7280;
+  }
+
+  .cart-items {
+    display: grid;
+    gap: 10px;
+    min-height: 80px;
+  }
+
+  .cart-line {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .cart-line-info b {
+    display: block;
+  }
+
+  .cart-line-info span {
+    color: #6b7280;
+    font-size: 14px;
+  }
+
+  .cart-line-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cart-line-actions button {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: #e5e7eb;
+    font-weight: 800;
+  }
+
+  .cart-line-actions .remove-btn {
+    margin-left: auto;
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .cart-money-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 10px 0;
+  }
+
+  .cart-money-row.final {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed #d1d5db;
+    font-size: 18px;
+  }
+
+  .cart-submit-btn {
+    width: 100%;
+    margin-top: 14px;
+  }
+
+  .cart-note {
+    margin-bottom: 0;
+    font-size: 13px;
+  }
+
+  @media (max-width: 1180px) {
+    .pos-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .pos-cart-card {
+      position: static;
+      max-height: none;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .pos-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .pos-products-list {
+      max-height: none;
+    }
+  }
+</style>
 
 <%- include('partials/footer') %>
